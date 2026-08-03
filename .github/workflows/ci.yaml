@@ -1,11 +1,11 @@
 name: CI
-# Railway handles CD automatically on push to main
+# Railway handles CD automatically on push to master
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   build:
@@ -27,4 +27,4 @@ jobs:
         run: ./mvnw clean verify
         env:
           ENCRYPTION_KEY: 12345678901234567890123456789012
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN }}
