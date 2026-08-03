@@ -4,7 +4,6 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.outbox.OutboxEntry;
-import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
@@ -33,9 +32,6 @@ class OutboxProcessorTest {
     private EmailSendService emailSendService;
 
     @Mock
-    private OutboxEntryRepository outboxEntryRepository;
-
-    @Mock
     private CampaignRecipientRepository campaignRecipientRepository;
 
     @Mock
@@ -57,17 +53,21 @@ class OutboxProcessorTest {
                 .idempotencyKey("campaign-id:user-id")
                 .build();
 
-        outboxEntry = OutboxEntry.builder()
-                .id(UUID.randomUUID())
-                .campaignRecipientId(recipient.getId())
-                .status(OutboxStatus.PROCESSING)
-                .attempts(0)
-                .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .build();
+        outboxEntry = processingEntryWithAttempts(0);
 
         when(campaignRecipientRepository.findById(outboxEntry.getCampaignRecipientId()))
                 .thenReturn(Optional.of(recipient));
+    }
+
+    private OutboxEntry processingEntryWithAttempts(int attempts) {
+        return OutboxEntry.builder()
+                .id(UUID.randomUUID())
+                .campaignRecipientId(recipient.getId())
+                .status(OutboxStatus.PROCESSING)
+                .attempts(attempts)
+                .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
+                .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
+                .build();
     }
 
     @Test
@@ -89,14 +89,7 @@ class OutboxProcessorTest {
     @ValueSource(ints = {0, 1, 2})
     void shouldDeliverEmailSuccessfullyRegardlessOfPriorAttempts(int attempts) {
         // Given
-        outboxEntry = OutboxEntry.builder()
-                .id(UUID.randomUUID())
-                .campaignRecipientId(recipient.getId())
-                .status(OutboxStatus.PROCESSING)
-                .attempts(attempts)
-                .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .build();
+        outboxEntry = processingEntryWithAttempts(attempts);
         when(emailSendService.sendEmail(recipient))
                 .thenReturn(new SendResult("msg-123", recipient));
 
@@ -119,7 +112,7 @@ class OutboxProcessorTest {
 
         // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
-        assertThat(outboxEntry.getAttempts()).isEqualTo(0);
+        assertThat(outboxEntry.getAttempts()).isZero();
         assertThat(outboxEntry.getNextAttemptAt().toLocalDate())
                 .isEqualTo(LocalDate.now(ZoneId.systemDefault()).plusDays(1));
     }
@@ -143,14 +136,7 @@ class OutboxProcessorTest {
     @Test
     void shouldMarkOutboxAndRecipientFailedAfterThreeFailedAttempts() {
         // Given
-        outboxEntry = OutboxEntry.builder()
-                .id(UUID.randomUUID())
-                .campaignRecipientId(recipient.getId())
-                .status(OutboxStatus.PROCESSING)
-                .attempts(3)
-                .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .build();
+        outboxEntry = processingEntryWithAttempts(3);
         when(emailSendService.sendEmail(recipient))
                 .thenThrow(new EmailSendException("Final failure"));
 

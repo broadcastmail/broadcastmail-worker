@@ -5,7 +5,7 @@ import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
-import com.broadcastmail.common.campaign.recipient.RecipientStatus;
+import com.broadcastmail.common.campaign.recipient.RecipientStatusCounts;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -21,9 +21,10 @@ public class CampaignCompletionService {
 
     public void  checkAndComplete(UUID campaignId)
     {
-        long queued = campaignRecipientRepository.countByCampaignIdAndStatus(campaignId, RecipientStatus.QUEUED);        if (queued > 0) return;
-        long total = campaignRecipientRepository.countByCampaignId(campaignId);
-        long failed = campaignRecipientRepository.countByCampaignIdAndStatus(campaignId, RecipientStatus.FAILED);
+        RecipientStatusCounts counts = campaignRecipientRepository.countStatusesByCampaignId(campaignId);
+        if (counts.getQueued() > 0) return;
+        long total = counts.getTotal();
+        long failed = counts.getFailed();
 
         Campaign campaign = campaignRepository.findById(campaignId)
                 .orElseThrow(()->new CampaignNotFoundException(campaignId));

@@ -4,7 +4,7 @@ import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
-import com.broadcastmail.common.campaign.recipient.RecipientStatus;
+import com.broadcastmail.common.campaign.recipient.RecipientStatusCounts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -45,17 +44,22 @@ class CampaignCompletionServiceTest {
                 .thenReturn(Optional.of(campaign));
     }
 
+    private record CountsStub(long queued, long total, long failed) implements RecipientStatusCounts {
+        public long getQueued() { return queued; }
+        public long getTotal() { return total; }
+        public long getFailed() { return failed; }
+    }
+
+    private void stubRecipientCounts(long queued, long total, long failed) {
+        when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))
+                .thenReturn(new CountsStub(queued, total, failed));
+    }
+
     @Test
     void shouldMarkCampaignSentWhenAllRecipientsProcessed() {
         // Given
         stubCampaignFound();
-        when(campaignRecipientRepository
-                .countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.QUEUED))
-                .thenReturn(0L);
-        when(campaignRecipientRepository.countByCampaignId(CAMPAIGN_ID))
-                .thenReturn(10L);
-        when(campaignRecipientRepository.countByCampaignIdAndStatus
-                (CAMPAIGN_ID, RecipientStatus.FAILED)).thenReturn(0L);
+        stubRecipientCounts(0L, 10L, 0L);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
@@ -69,9 +73,7 @@ class CampaignCompletionServiceTest {
     void shouldMarkCampaignPartiallyFailedWhenMoreThan10PercentOfRecipientsFailed() {
         // Given
         stubCampaignFound();
-        when(campaignRecipientRepository.countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.QUEUED)).thenReturn(0L);
-        when(campaignRecipientRepository.countByCampaignId(CAMPAIGN_ID)).thenReturn(10L);
-        when(campaignRecipientRepository.countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.FAILED)).thenReturn(2L);
+        stubRecipientCounts(0L, 10L, 2L);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
@@ -85,9 +87,7 @@ class CampaignCompletionServiceTest {
     void shouldMarkCampaignFailedWhenAllRecipientsFailed() {
         // Given
         stubCampaignFound();
-        when(campaignRecipientRepository.countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.QUEUED)).thenReturn(0L);
-        when(campaignRecipientRepository.countByCampaignId(CAMPAIGN_ID)).thenReturn(10L);
-        when(campaignRecipientRepository.countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.FAILED)).thenReturn(10L);
+        stubRecipientCounts(0L, 10L, 10L);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
@@ -100,7 +100,7 @@ class CampaignCompletionServiceTest {
     @Test
     void shouldNotUpdateCampaignStatusWhileRecipientsStillQueued() {
         // Given
-        when(campaignRecipientRepository.countByCampaignIdAndStatus(CAMPAIGN_ID, RecipientStatus.QUEUED)).thenReturn(5L);
+        stubRecipientCounts(5L, 0L, 0L);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);

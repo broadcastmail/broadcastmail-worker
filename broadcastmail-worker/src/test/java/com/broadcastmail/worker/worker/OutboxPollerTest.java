@@ -28,15 +28,19 @@ class OutboxPollerTest {
     @InjectMocks
     private OutboxPoller outboxPoller;
 
-    @Test
-    void shouldMarkClaimedRowsAsProcessing() {
-        // Given
-        OutboxEntry entry = OutboxEntry.builder()
+    private OutboxEntry pendingEntry() {
+        return OutboxEntry.builder()
                 .id(UUID.randomUUID())
                 .status(OutboxStatus.PENDING)
                 .attempts(0)
                 .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
                 .build();
+    }
+
+    @Test
+    void shouldMarkClaimedRowsAsProcessing() {
+        // Given
+        OutboxEntry entry = pendingEntry();
         when(outboxEntryRepository.pollPending()).thenReturn(List.of(entry));
 
         // When
@@ -50,12 +54,7 @@ class OutboxPollerTest {
     @Test
     void shouldSetLastAttemptedAtWhenClaiming() {
         // Given
-        OutboxEntry entry = OutboxEntry.builder()
-                .id(UUID.randomUUID())
-                .status(OutboxStatus.PENDING)
-                .attempts(0)
-                .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
-                .build();
+        OutboxEntry entry = pendingEntry();
         when(outboxEntryRepository.pollPending()).thenReturn(List.of(entry));
 
         // When
