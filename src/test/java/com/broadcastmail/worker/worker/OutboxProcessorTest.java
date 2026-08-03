@@ -4,6 +4,7 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.outbox.OutboxEntry;
+import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
@@ -30,6 +31,9 @@ class OutboxProcessorTest {
 
     @Mock
     private EmailSendService emailSendService;
+
+    @Mock
+    private OutboxEntryRepository outboxEntryRepository;
 
     @Mock
     private CampaignRecipientRepository campaignRecipientRepository;
