@@ -101,7 +101,7 @@
     <repositories>
         <repository>
             <id>github</id>
-            <url>https://maven.pkg.github.com/lakiidev/broadcastmail-common</url>
+            <url>https://maven.pkg.github.com/broadcastmail/broadcastmail-common</url>
         </repository>
     </repositories>
 	<build>
