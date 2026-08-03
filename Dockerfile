@@ -1,10 +1,11 @@
-# syntax=docker/dockerfile:1
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /app
 
+ARG GITHUB_TOKEN
+ENV GITHUB_TOKEN=${GITHUB_TOKEN}
+
 COPY . .
-RUN --mount=type=secret,id=GITHUB_TOKEN \
-    GITHUB_TOKEN=$(cat /run/secrets/GITHUB_TOKEN) ./mvnw -s settings.xml -B clean package -DskipTests
+RUN ./mvnw -s settings.xml -B clean package -DskipTests
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
