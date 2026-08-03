@@ -40,7 +40,7 @@ public class OutboxProcessor {
             campaignRecipientRepository.save(recipient);
             campaignCompletionService.checkAndComplete(recipient.getCampaignId());
 
-        } catch (ResendRateLimitException e) {
+        } catch (ResendRateLimitException _) {
             outboxEntry.setStatus(OutboxStatus.PENDING);
             outboxEntry.setNextAttemptAt(
                     LocalDate.now(ZoneId.systemDefault())
