@@ -18,8 +18,6 @@ import com.broadcastmail.worker.resend.ResendClient;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -145,33 +143,33 @@ class FanOutWorkerIntegrationTest {
     @Test
     void shouldNotSendDuplicateEmailsWhenPolledConcurrently() throws Exception {
         doReturn("msg-123").when(resendClient).sendEmail(anyString(), any(), anyString());
-        ExecutorService executorService = Executors.newFixedThreadPool(2);
-        CountDownLatch latch = new CountDownLatch(1);
+        try (ExecutorService executorService = Executors.newFixedThreadPool(2)) {
+            CountDownLatch latch = new CountDownLatch(1);
 
-        Future<?> task1 = executorService.submit(() -> {
-            try {
-                latch.await();
-                fanOutWorker.poll();
-            }
-            catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+            Future<?> task1 = executorService.submit(() -> {
+                try {
+                    latch.await();
+                    fanOutWorker.poll();
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+            });
 
-        Future<?> task2 = executorService.submit(() -> {
-            try {
-                latch.await();
-                fanOutWorker.poll();
-            }
-            catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        latch.countDown();
-        task1.get();
-        task2.get();
+            Future<?> task2 = executorService.submit(() -> {
+                try {
+                    latch.await();
+                    fanOutWorker.poll();
+                } catch (InterruptedException _) {
+                    Thread.currentThread().interrupt();
+                }
+            });
 
-        verify(resendClient,times(1)).sendEmail(anyString(), any(), anyString());
+            latch.countDown();
+            task1.get();
+            task2.get();
+        }
+
+        verify(resendClient, times(1)).sendEmail(anyString(), any(), anyString());
     }
 
     @Test
