@@ -1,4 +1,4 @@
-package com.broadcastmail.config;
+package com.broadcastmail.worker.config;
 
 
 import org.springframework.boot.context.properties.ConfigurationProperties;

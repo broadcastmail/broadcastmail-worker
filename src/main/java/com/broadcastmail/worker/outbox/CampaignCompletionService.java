@@ -1,4 +1,4 @@
-package com.broadcastmail.worker.worker;
+package com.broadcastmail.worker.outbox;
 
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;

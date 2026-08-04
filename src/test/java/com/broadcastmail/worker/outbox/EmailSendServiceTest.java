@@ -1,4 +1,4 @@
-package com.broadcastmail.worker.worker;
+package com.broadcastmail.worker.outbox;
 
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
@@ -6,7 +6,7 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.emailprovider.EmailProvider;
 import com.broadcastmail.common.emailprovider.EmailProviderRepository;
-import com.broadcastmail.config.EncryptionProperties;
+import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;

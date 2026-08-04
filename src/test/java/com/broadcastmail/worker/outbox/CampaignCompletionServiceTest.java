@@ -1,4 +1,4 @@
-package com.broadcastmail.worker.worker;
+package com.broadcastmail.worker.outbox;
 
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
