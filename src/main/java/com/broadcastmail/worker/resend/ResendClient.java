@@ -28,6 +28,8 @@ public class ResendClient {
                     .to(request.to())
                     .subject(request.subject())
                     .html(request.html())
+                    .addHeader("List-Unsubscribe", "<" + request.unsubscribeUrl() + ">")
+                    .addHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
                     .addHeader("Idempotency-Key", idempotencyKey)
                     .build();
             assert resend != null;

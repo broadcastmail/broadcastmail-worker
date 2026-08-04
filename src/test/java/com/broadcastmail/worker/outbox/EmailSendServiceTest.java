@@ -12,6 +12,7 @@ import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
 import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
+import com.broadcastmail.worker.unsubsribe.UnsubscribeTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +36,10 @@ class EmailSendServiceTest {
     @Mock
     private ResendClient resendClient;
 
+    @Mock
+    private UnsubscribeTokenService unsubscribeTokenService;
+
+
     private EmailSendService emailSendService;
     private Campaign campaign;
     private EmailProvider emailProvider;
@@ -49,7 +54,8 @@ class EmailSendServiceTest {
                 campaignRepository,
                 emailProviderRepository,
                 resendClient,
-                encryptionProperties
+                encryptionProperties,
+                unsubscribeTokenService
         );
 
         campaign = Campaign.builder()
