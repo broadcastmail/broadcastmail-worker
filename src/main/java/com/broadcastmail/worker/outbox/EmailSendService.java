@@ -11,6 +11,7 @@ import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
 import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
+import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;
@@ -24,11 +25,11 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EmailSendService {
 
-
     private final CampaignRepository campaignRepository;
     private final EmailProviderRepository emailProviderRepository;
     private final ResendClient resendClient;
     private final EncryptionProperties encryptionProperties;
+    private final UnsubscribeTokenService unsubscribeTokenService;
 
     private final Cache<UUID, Campaign> campaignCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(30))
@@ -49,15 +50,19 @@ public class EmailSendService {
 
         String apiKey = SecurityUtil.decrypt(emailProvider.getEncryptedApiKey(), encryptionProperties.key());
 
+        String unsubscribeUrl = unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId());
+        String bodyWithUnsubscribe = campaign.getBodyHtml() +
+                "<br><br><a href=\"" + unsubscribeUrl + "\">Unsubscribe</a>";
+
         ResendSendRequest request = new ResendSendRequest(
                 emailProvider.getFromAddress(),
                 List.of(recipient.getEmail()),
                 campaign.getSubject(),
-                campaign.getBodyHtml()
+                bodyWithUnsubscribe,
+                unsubscribeUrl
         );
 
         String messageId = resendClient.sendEmail(apiKey, request, recipient.getIdempotencyKey());
-        return new SendResult(messageId,recipient);
-
+        return new SendResult(messageId, recipient);
     }
 }

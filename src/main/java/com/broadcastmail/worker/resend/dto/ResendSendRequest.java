@@ -6,5 +6,6 @@ public record ResendSendRequest(
         String from,
         List<String> to,
         String subject,
-        String html
+        String html,
+        String unsubscribeUrl
 ) {}

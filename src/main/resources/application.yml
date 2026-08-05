@@ -7,6 +7,12 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+  # broadcastmail-api owns schema migrations (see docs/DATABASE.md in that repo);
+  # worker only ever validates against the schema, never mutates it. Migrations
+  # still ride on the classpath via broadcastmail-common so this flag matters,
+  # not just an absent folder like before.
+  flyway:
+    enabled: false
   jackson:
     deserialization:
       fail-on-unknown-properties: false
@@ -14,3 +20,6 @@ spring:
 app:
   encryption:
     key: ${ENCRYPTION_KEY}
+  frontend:
+    url: ${FRONTEND_URL:http://localhost:3000}
+  unsubscribeSecret: ${UNSUBSCRIBE_SECRET}
