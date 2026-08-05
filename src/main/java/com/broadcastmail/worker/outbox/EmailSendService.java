@@ -11,7 +11,7 @@ import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
 import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
-import com.broadcastmail.worker.unsubsribe.UnsubscribeTokenService;
+import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.RequiredArgsConstructor;

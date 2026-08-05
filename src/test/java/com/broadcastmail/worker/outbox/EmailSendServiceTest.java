@@ -12,7 +12,7 @@ import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
 import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
-import com.broadcastmail.worker.unsubsribe.UnsubscribeTokenService;
+import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -81,11 +81,15 @@ class EmailSendServiceTest {
 
     }
 
+    private static final String TEST_UNSUBSCRIBE_URL = "https://app.example.com/unsubscribe?token=test-token";
+
     private void stubHappyPath() {
         when(campaignRepository.findById(campaign.getId()))
                 .thenReturn(Optional.of(campaign));
         when(emailProviderRepository.findByAccountId(campaign.getAccountId()))
                 .thenReturn(Optional.of(emailProvider));
+        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId()))
+                .thenReturn(TEST_UNSUBSCRIBE_URL);
     }
 
     @Test
@@ -102,9 +106,29 @@ class EmailSendServiceTest {
         verify(resendClient).sendEmail(
                 anyString(),
                 argThat(req -> req.subject().equals("Hello subscribers")
-                        && req.html().equals("<p>Welcome</p>")
+                        && req.html().equals("<p>Welcome</p><br><br><a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")
                         && req.to().contains("user@example.com")),
                 eq("idempotency-key-123")
+        );
+    }
+
+    @Test
+    void shouldGenerateUnsubscribeUrlForRecipientAndAppendItToBody() {
+        // Given
+        stubHappyPath();
+        when(resendClient.sendEmail(anyString(), any(ResendSendRequest.class), anyString()))
+                .thenReturn("msg-123");
+
+        // When
+        emailSendService.sendEmail(recipient);
+
+        // Then
+        verify(unsubscribeTokenService).generateUnsubscribeUrl(recipient.getId());
+        verify(resendClient).sendEmail(
+                anyString(),
+                argThat(req -> req.unsubscribeUrl().equals(TEST_UNSUBSCRIBE_URL)
+                        && req.html().contains("<a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")),
+                anyString()
         );
     }
 

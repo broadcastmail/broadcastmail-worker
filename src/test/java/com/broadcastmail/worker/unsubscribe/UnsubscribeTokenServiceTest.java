@@ -1,4 +1,4 @@
-package com.broadcastmail.worker.unsubsribe;
+package com.broadcastmail.worker.unsubscribe;
 
 import com.broadcastmail.worker.config.AppProperties;
 import io.jsonwebtoken.Claims;
