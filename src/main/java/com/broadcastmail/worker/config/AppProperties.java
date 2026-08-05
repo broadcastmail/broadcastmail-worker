@@ -5,5 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record AppProperties(
         String unsubscribeSecret,
-        String frontendUrl
-) {}
+        Frontend frontend
+) {
+    public record Frontend(String url) {}
+}

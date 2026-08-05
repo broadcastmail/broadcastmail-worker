@@ -26,7 +26,7 @@ class UnsubscribeTokenServiceTest {
     @BeforeEach
     void setUp() {
         unsubscribeTokenService = new UnsubscribeTokenService(
-                new AppProperties(TEST_SECRET, TEST_FRONTEND_URL)
+                new AppProperties(TEST_SECRET, new AppProperties.Frontend(TEST_FRONTEND_URL))
         );
     }
 

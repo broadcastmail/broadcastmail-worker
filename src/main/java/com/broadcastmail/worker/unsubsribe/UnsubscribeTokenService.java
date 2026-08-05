@@ -23,7 +23,7 @@ public class UnsubscribeTokenService {
                     .expiration(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
                     .signWith(getKey())
                     .compact();
-        return appProperties.frontendUrl() + "/unsubscribe?token=" + token;
+        return appProperties.frontend().url() + "/unsubscribe?token=" + token;
     }
 
     private SecretKey getKey() {

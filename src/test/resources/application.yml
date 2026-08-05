@@ -16,6 +16,7 @@ app:
     key: 01234567890123456789012345678901
   frontend:
     url: http://localhost:3000
+  unsubscribe-secret: 12345678901234567890123456789012
 
 supabase:
   oauth:
