@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"com.broadcastmail.worker", "com.broadcastmail.common"})
 @ConfigurationPropertiesScan
 @EnableJpaRepositories(basePackages = {"com.broadcastmail.worker", "com.broadcastmail.common"})
 @EntityScan(basePackages = {"com.broadcastmail.worker", "com.broadcastmail.common"})

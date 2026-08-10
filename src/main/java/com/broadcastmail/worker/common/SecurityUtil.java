@@ -63,7 +63,9 @@ public class SecurityUtil {
         catch (Exception e) {
             throw new RuntimeException("Encryption failed", e);
         }
-    }public static String decrypt(String cipherText, String masterKey){
+    }
+
+    public static String decrypt(String cipherText, String masterKey){
         try{
             byte[] combined = Base64.getDecoder().decode(cipherText);
             byte[] iv = Arrays.copyOfRange(combined, 0, GCM_IV_LENGTH);

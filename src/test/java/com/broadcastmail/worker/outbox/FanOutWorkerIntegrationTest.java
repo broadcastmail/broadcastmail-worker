@@ -1,7 +1,7 @@
 package com.broadcastmail.worker.outbox;
 
 
-import com.broadcastmail.TestContainersConfiguration;
+import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;

@@ -34,11 +34,17 @@ public class CampaignCompletionService {
         } else if ((double) failed / total > 0.1) {
             finalStatus = CampaignStatus.PARTIALLY_FAILED;
         } else {
-            finalStatus = CampaignStatus.SENT;
+                finalStatus = CampaignStatus.SENT;
         }
         campaign.setStatus(finalStatus);
         campaign.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
         campaignRepository.save(campaign);
 
+        if (failed > 0) {
+            int deleted;
+            do {
+                deleted = campaignRecipientRepository.deleteFailedBatch(campaignId, 100);
+            } while (deleted > 0);
+        }
     }
 }
