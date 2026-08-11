@@ -1,6 +1,10 @@
 package com.broadcastmail.worker.outbox;
 
 
+import com.broadcastmail.common.account.Account;
+import com.broadcastmail.common.account.AccountRepository;
+import com.broadcastmail.common.connection.Connection;
+import com.broadcastmail.common.connection.ConnectionRepository;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
@@ -15,6 +19,7 @@ import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.resend.ResendClient;
+import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,7 +27,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.OffsetDateTime;
@@ -55,7 +59,9 @@ class FanOutWorkerIntegrationTest {
     private EmailProviderRepository emailProviderRepository;
 
     @Autowired
-    private JdbcTemplate jdbcTemplate;
+    private AccountRepository accountRepository;
+    @Autowired
+    private ConnectionRepository connectionRepository;
 
     @MockitoSpyBean
     private ResendClient resendClient;
@@ -70,16 +76,14 @@ class FanOutWorkerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        accountId = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO accounts (id, email, password_hash, api_key_hash, plan, email_verified, unique_recipients_this_period, period_reset_at) VALUES (?, ?, '', '', 'free', true, 0, now())",
-                accountId, "test@example.com"
-        );
-        UUID connectionId = UUID.randomUUID();
-        jdbcTemplate.update(
-                "INSERT INTO connections (id, account_id, name, type, project_url, encrypted_creds, user_table_schema, user_table_name, email_column, user_id_column, created_at, updated_at) VALUES (?, ?, 'Test', 'supabase', 'https://test.supabase.co', 'creds', 'public', 'profiles', 'email', 'id', now(), now())",
-                connectionId, accountId
-        );
+        Account account = accountRepository.save(CampaignTestFixtures.account().build());
+        accountId = account.getId();
+
+        Connection connection = connectionRepository.save(
+                CampaignTestFixtures.connection(accountId)
+                        .encryptedCreds(SecurityUtil.encrypt("testpassword", CampaignTestFixtures.TEST_ENCRYPTION_KEY))
+                        .build());
+        UUID connectionId = connection.getId();
 
         emailProviderRepository.save(EmailProvider.builder()
                 .accountId(accountId)
@@ -119,7 +123,8 @@ class FanOutWorkerIntegrationTest {
         campaignRecipientRepository.deleteAll();
         campaignRepository.deleteAll();
         emailProviderRepository.deleteAll();
-        jdbcTemplate.update("DELETE FROM accounts WHERE id = ?", accountId);
+        connectionRepository.deleteAll();
+        accountRepository.deleteAll();
     }
 
     @Test
