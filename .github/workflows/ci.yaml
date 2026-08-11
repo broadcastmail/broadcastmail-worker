@@ -24,7 +24,7 @@ jobs:
           server-password: GITHUB_TOKEN
 
       - name: Build and test
-        run: ./mvnw clean verify
+        run: ./mvnw clean verify -Dgroups='!local'
         env:
           ENCRYPTION_KEY: 12345678901234567890123456789012
           GITHUB_TOKEN: ${{ secrets.PACKAGES_TOKEN }}

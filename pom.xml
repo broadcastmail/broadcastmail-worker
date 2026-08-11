@@ -33,7 +33,7 @@
         <dependency>
             <groupId>com.broadcastmail</groupId>
             <artifactId>broadcastmail-common</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <version>1.1-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>com.resend</groupId>
@@ -114,7 +114,11 @@
             <version>0.12.7</version>
             <scope>runtime</scope>
         </dependency>
-	</dependencies>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+        </dependency>
+    </dependencies>
     <repositories>
         <repository>
             <id>github</id>
