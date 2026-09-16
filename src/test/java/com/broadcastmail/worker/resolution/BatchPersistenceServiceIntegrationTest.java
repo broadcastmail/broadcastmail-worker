@@ -85,4 +85,22 @@ class BatchPersistenceServiceIntegrationTest {
         assertThat(campaignRecipientRepository.findByCampaignId(campaign.getId(), Pageable.unpaged()))
                 .hasSize(2);
     }
+
+    @Test
+    void shouldSkipOutboxForAlreadyExistingRecipients() {
+        // Given
+        List<RecipientRow> batch = CampaignTestFixtures.recipientRows(2);
+        batchPersistenceService.persistBatch(campaign.getId(), batch);
+
+        // When
+        batchPersistenceService.persistBatch(campaign.getId(), batch);
+
+        // Then
+        assertThat(campaignRecipientRepository
+                .findByCampaignId(campaign.getId(), Pageable.unpaged()))
+                .hasSize(2);
+
+        assertThat(outboxEntryRepository.findAll())
+                .hasSize(2);
+    }
 }
