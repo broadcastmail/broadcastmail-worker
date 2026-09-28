@@ -10,6 +10,7 @@ import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.RecipientNotFoundException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -26,6 +27,7 @@ public class OutboxProcessor {
     private final CampaignCompletionService campaignCompletionService;
     private final CampaignRepository campaignRepository;
 
+    @Transactional
     public void process(OutboxEntry outboxEntry) {
         CampaignRecipient recipient = campaignRecipientRepository
                 .findById(outboxEntry.getCampaignRecipientId())
