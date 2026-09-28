@@ -1,5 +1,6 @@
 package com.broadcastmail.worker.outbox;
 
+import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
@@ -40,6 +41,9 @@ class OutboxProcessorTest {
 
     @Mock
     private CampaignCompletionService campaignCompletionService;
+
+    @Mock
+    private CampaignRepository campaignRepository;
 
     @InjectMocks
     private OutboxProcessor outboxProcessor;
@@ -151,6 +155,33 @@ class OutboxProcessorTest {
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.FAILED);
         assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.FAILED);
         assertThat(recipient.getFailedReason()).isEqualTo("Final failure");
+    }
+
+    @Test
+    void shouldIncrementCampaignSentCountOnSuccessfulSend() {
+        // Given
+        when(emailSendService.sendEmail(recipient))
+                .thenReturn(new SendResult("msg-123", recipient));
+
+        // When
+        outboxProcessor.process(outboxEntry);
+
+        // Then
+        verify(campaignRepository).incrementSentCount(recipient.getCampaignId());
+    }
+
+    @Test
+    void shouldNotIncrementCampaignSentCountOnFailedSend() {
+        // Given
+        outboxEntry = processingEntryWithAttempts(3);
+        when(emailSendService.sendEmail(recipient))
+                .thenThrow(new EmailSendException("Final failure"));
+
+        // When
+        outboxProcessor.process(outboxEntry);
+
+        // Then
+        verify(campaignRepository, never()).incrementSentCount(any());
     }
 
     @Test

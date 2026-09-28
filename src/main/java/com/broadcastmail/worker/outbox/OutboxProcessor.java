@@ -1,5 +1,6 @@
 package com.broadcastmail.worker.outbox;
 
+import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
@@ -23,6 +24,7 @@ public class OutboxProcessor {
     private final OutboxEntryRepository outboxEntryRepository;
     private final CampaignRecipientRepository campaignRecipientRepository;
     private final CampaignCompletionService campaignCompletionService;
+    private final CampaignRepository campaignRepository;
 
     public void process(OutboxEntry outboxEntry) {
         CampaignRecipient recipient = campaignRecipientRepository
@@ -38,6 +40,7 @@ public class OutboxProcessor {
             recipient.setResendMessageId(result.messageId());
             recipient.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
             campaignRecipientRepository.save(recipient);
+            campaignRepository.incrementSentCount(recipient.getCampaignId());
             campaignCompletionService.checkAndComplete(recipient.getCampaignId());
 
         } catch (ResendRateLimitException _) {
