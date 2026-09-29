@@ -32,7 +32,7 @@ public class OutboxProcessor {
         CampaignRecipient recipient = campaignRecipientRepository
                 .findById(outboxEntry.getCampaignRecipientId())
                 .orElseThrow(() -> new RecipientNotFoundException(outboxEntry.getCampaignRecipientId()));
-
+        boolean recipientFailed = false;
 
         try {
             SendResult result = emailSendService.sendEmail(recipient);
@@ -70,11 +70,15 @@ public class OutboxProcessor {
             } else {
                 outboxEntry.setStatus(OutboxStatus.FAILED);
                 recipient.setStatus(RecipientStatus.FAILED);
-                campaignCompletionService.checkAndComplete(recipient.getCampaignId());
                 recipient.setFailedReason(e.getMessage());
                 campaignRecipientRepository.save(recipient);
+                recipientFailed = true;
             }
             outboxEntryRepository.save(outboxEntry);
+            if (recipientFailed) {
+                campaignRecipientRepository.flush();
+                campaignCompletionService.checkAndComplete(recipient.getCampaignId());
+            }
         }
     }
 }

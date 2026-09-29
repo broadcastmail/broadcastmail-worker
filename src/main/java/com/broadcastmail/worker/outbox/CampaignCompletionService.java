@@ -37,14 +37,8 @@ public class CampaignCompletionService {
                 finalStatus = CampaignStatus.SENT;
         }
         campaign.setStatus(finalStatus);
+        campaign.setFailedCount(Math.toIntExact(failed));
         campaign.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
         campaignRepository.save(campaign);
-
-        if (failed > 0) {
-            int deleted;
-            do {
-                deleted = campaignRecipientRepository.deleteFailedBatch(campaignId, 100);
-            } while (deleted > 0);
-        }
     }
 }
