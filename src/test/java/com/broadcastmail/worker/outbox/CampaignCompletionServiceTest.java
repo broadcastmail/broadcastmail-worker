@@ -72,8 +72,6 @@ class CampaignCompletionServiceTest {
                 .thenReturn(counts(0, 5, 5));
         when(campaignRepository.findById(CAMPAIGN_ID))
                 .thenReturn(Optional.of(sendingCampaign()));
-        when(campaignRecipientRepository.deleteFailedBatch(CAMPAIGN_ID, 100))
-                .thenReturn(0);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
@@ -81,6 +79,7 @@ class CampaignCompletionServiceTest {
         // Then
         Campaign saved = capturesSaved();
         assertThat(saved.getStatus()).isEqualTo(CampaignStatus.FAILED);
+        assertThat(saved.getFailedCount()).isEqualTo(5);
     }
 
     @Test
@@ -90,8 +89,6 @@ class CampaignCompletionServiceTest {
                 .thenReturn(counts(0, 2, 10));
         when(campaignRepository.findById(CAMPAIGN_ID))
                 .thenReturn(Optional.of(sendingCampaign()));
-        when(campaignRecipientRepository.deleteFailedBatch(CAMPAIGN_ID, 100))
-                .thenReturn(0);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
@@ -99,24 +96,22 @@ class CampaignCompletionServiceTest {
         // Then
         Campaign saved = capturesSaved();
         assertThat(saved.getStatus()).isEqualTo(CampaignStatus.PARTIALLY_FAILED);
+        assertThat(saved.getFailedCount()).isEqualTo(2);
     }
 
     @Test
-    void shouldBatchDeleteFailedRecipientsWhenCampaignFails() {
+    void shouldKeepFailedRecipientsSoTheyCanBeRetried() {
         // Given
         when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))
                 .thenReturn(counts(0, 5, 5));
         when(campaignRepository.findById(CAMPAIGN_ID))
                 .thenReturn(Optional.of(sendingCampaign()));
-        when(campaignRecipientRepository.deleteFailedBatch(CAMPAIGN_ID, 100))
-                .thenReturn(5)
-                .thenReturn(0);
 
         // When
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
 
         // Then
-        verify(campaignRecipientRepository, times(2)).deleteFailedBatch(CAMPAIGN_ID, 100);
+        verify(campaignRecipientRepository, never()).deleteFailedBatch(any(), anyInt());
     }
 
     @Test

@@ -15,6 +15,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -155,6 +156,11 @@ class OutboxProcessorTest {
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.FAILED);
         assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.FAILED);
         assertThat(recipient.getFailedReason()).isEqualTo("Final failure");
+        InOrder inOrder = inOrder(campaignRecipientRepository, outboxEntryRepository, campaignCompletionService);
+        inOrder.verify(campaignRecipientRepository).save(recipient);
+        inOrder.verify(outboxEntryRepository).save(outboxEntry);
+        inOrder.verify(campaignRecipientRepository).flush();
+        inOrder.verify(campaignCompletionService).checkAndComplete(recipient.getCampaignId());
     }
 
     @Test
