@@ -1,5 +1,6 @@
 package com.broadcastmail.worker.jobs;
 
+import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -22,8 +23,8 @@ public class RetentionCleanupJob {
         OffsetDateTime freeCutoff = OffsetDateTime.now(ZoneId.systemDefault()).minusDays(7);
         OffsetDateTime proCutoff = OffsetDateTime.now(ZoneId.systemDefault()).minusDays(90);
 
-        campaignRepository.deleteByPlanAndSentAtBefore("free", freeCutoff);
-        campaignRepository.deleteByPlanAndSentAtBefore("pro", proCutoff);
+        campaignRepository.deleteByPlanAndSentAtBefore(Plan.FREE.name(), freeCutoff);
+        campaignRepository.deleteByPlanAndSentAtBefore(Plan.PRO.name(), proCutoff);
 
         log.info("RetentionCleanupJob — deleted campaigns older than retention window");
     }
