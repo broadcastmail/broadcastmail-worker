@@ -53,6 +53,13 @@ class ResolutionServiceTest {
                 .build();
     }
 
+    private Account account() {
+        return Account.builder()
+                .id(ACCOUNT_ID)
+                .plan(Plan.FREE)
+                .build();
+    }
+
     private Connection connection() {
         return Connection.builder()
                 .encryptedCreds(SecurityUtil.encrypt("testpassword", CampaignTestFixtures.TEST_ENCRYPTION_KEY))
@@ -69,6 +76,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -91,6 +99,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -114,6 +123,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -148,6 +158,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
