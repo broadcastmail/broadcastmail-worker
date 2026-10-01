@@ -1,16 +1,18 @@
 package com.broadcastmail.worker.resolution;
 
+import com.broadcastmail.common.account.Account;
+import com.broadcastmail.common.account.AccountRepository;
+import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.campaign.filter.CampaignFilterRepository;
 import com.broadcastmail.common.campaign.filter.CampaignFilterSerializer;
 import com.broadcastmail.common.campaign.filter.FilterQuery;
+import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
-import com.broadcastmail.worker.account.AccountPlanService;
 import com.broadcastmail.worker.common.SecurityUtil;
-import com.broadcastmail.worker.common.exceptions.PlanLimitExceededException;
 import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.Test;
@@ -24,9 +26,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,7 +35,6 @@ class ResolutionServiceTest {
     private static final UUID ACCOUNT_ID = UUID.randomUUID();
     private static final UUID CAMPAIGN_ID = UUID.randomUUID();
 
-    @Mock private AccountPlanService accountPlanService;
     @Mock private ConnectionRepository connectionRepository;
     @Mock private CampaignFilterRepository filterRepository;
     @Mock private CampaignFilterSerializer filterSerializer;
@@ -43,14 +42,21 @@ class ResolutionServiceTest {
     @Mock private ExternalRecipientQueryService externalRecipientQueryService;
     @Mock private CampaignRepository campaignRepository;
     @Mock private EncryptionProperties encryptionProperties;
-
+    @Mock private CampaignRecipientRepository campaignRecipientRepository;
+    @Mock private AccountRepository accountRepository;
     @InjectMocks private ResolutionService resolutionService;
-
     private Campaign resolvingCampaign() {
         return Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .accountId(ACCOUNT_ID)
                 .status(CampaignStatus.RESOLVING)
+                .build();
+    }
+
+    private Account account() {
+        return Account.builder()
+                .id(ACCOUNT_ID)
+                .plan(Plan.FREE)
                 .build();
     }
 
@@ -70,6 +76,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -92,6 +99,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -115,13 +123,14 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
                 .thenReturn(CampaignTestFixtures.recipientRows(2));
-        doThrow(new PlanLimitExceededException()).when(accountPlanService).checkRecipientLimit(ACCOUNT_ID);
-
+        when(campaignRecipientRepository.countUniqueRecipientsSince(eq(ACCOUNT_ID), any()))
+                .thenReturn(499L);
         // When
         resolutionService.resolve(campaign);
 
@@ -149,6 +158,7 @@ class ResolutionServiceTest {
         // Given
         Campaign campaign = resolvingCampaign();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
@@ -167,10 +177,17 @@ class ResolutionServiceTest {
     void shouldCheckPlanLimitAfterEachBatch() {
         // Given
         Campaign campaign = resolvingCampaign();
+        Account account = Account.builder()
+                .id(ACCOUNT_ID)
+                .plan(Plan.FREE)
+                .build();
         when(connectionRepository.findByAccountId(ACCOUNT_ID)).thenReturn(Optional.of(connection()));
+        when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
+        when(campaignRecipientRepository.countUniqueRecipientsSince(eq(ACCOUNT_ID), any()))
+                .thenReturn(0L);
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
                 .thenReturn(CampaignTestFixtures.recipientRows(100));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(100), anyInt()))
@@ -182,6 +199,7 @@ class ResolutionServiceTest {
         resolutionService.resolve(campaign);
 
         // Then
-        verify(accountPlanService, times(2)).checkRecipientLimit(ACCOUNT_ID);
+        assertThat(campaign.getStatus()).isEqualTo(CampaignStatus.SENDING);
+        assertThat(campaign.getRecipientCount()).isEqualTo(150);
     }
 }
