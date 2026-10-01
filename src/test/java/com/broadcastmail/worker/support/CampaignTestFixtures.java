@@ -1,6 +1,7 @@
 package com.broadcastmail.worker.support;
 
 import com.broadcastmail.common.account.Account;
+import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.connection.Connection;
@@ -24,7 +25,7 @@ public final class CampaignTestFixtures {
                 .email("test@example.com")
                 .passwordHash("")
                 .apiKeyHash(SecurityUtil.sha256(TEST_API_KEY))
-                .plan("free")
+                .plan(Plan.FREE)
                 .emailVerified(true);
     }
 

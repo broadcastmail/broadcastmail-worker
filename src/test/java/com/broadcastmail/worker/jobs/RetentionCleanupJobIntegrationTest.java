@@ -3,6 +3,7 @@ package com.broadcastmail.worker.jobs;
 
 import com.broadcastmail.common.account.Account;
 import com.broadcastmail.common.account.AccountRepository;
+import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
@@ -70,7 +71,7 @@ class RetentionCleanupJobIntegrationTest {
     @Test
     void shouldDeleteProCampaignsOlderThan90Days() {
         // Given
-        account.setPlan("pro");
+        account.setPlan(Plan.PRO);
         accountRepository.save(account);
 
         Campaign old = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
