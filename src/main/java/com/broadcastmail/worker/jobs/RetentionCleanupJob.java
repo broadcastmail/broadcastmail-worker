@@ -19,13 +19,13 @@ public class RetentionCleanupJob {
 
     @Transactional
     @Scheduled(cron = "0 0 2 * * *")
+
     public void run() {
-        OffsetDateTime freeCutoff = OffsetDateTime.now(ZoneId.systemDefault()).minusDays(7);
-        OffsetDateTime proCutoff = OffsetDateTime.now(ZoneId.systemDefault()).minusDays(90);
-
-        campaignRepository.deleteByPlanAndSentAtBefore(Plan.FREE.name(), freeCutoff);
-        campaignRepository.deleteByPlanAndSentAtBefore(Plan.PRO.name(), proCutoff);
-
+        for (Plan plan : Plan.values()) {
+            OffsetDateTime cutoff = OffsetDateTime.now(ZoneId.systemDefault())
+                    .minusDays(plan.strategy().retentionDays());
+            campaignRepository.deleteByPlanAndSentAtBefore(plan.name(), cutoff);
+        }
         log.info("RetentionCleanupJob — deleted campaigns older than retention window");
     }
 }
