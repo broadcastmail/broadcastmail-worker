@@ -2,6 +2,7 @@ package com.broadcastmail.worker.resolution;
 
 import com.broadcastmail.common.account.Account;
 import com.broadcastmail.common.account.AccountRepository;
+import com.broadcastmail.common.campaign.AudienceMode;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
@@ -22,7 +23,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -50,21 +53,16 @@ public class ResolutionService {
                     .orElseThrow(() -> new RuntimeException("Account not found: " + campaign.getAccountId()));
 
             String rolePassword = SecurityUtil.decrypt(connection.getEncryptedCreds(), encryptionProperties.key());
-            List<CampaignFilter> filters = filterRepository.findByCampaignId(campaign.getId());
-            FilterQuery filterQuery = filterSerializer.serialize(filters);
-            int totalResolved = 0;
-            int offset = 0;
-            List<RecipientRow> batch = fetchBatch(connection, rolePassword, filterQuery, offset);
             int historicalCount = (int) campaignRecipientRepository.countUniqueRecipientsSince(
                     account.getId(), OffsetDateTime.now(ZoneId.systemDefault()).minusDays(30));
 
-            while (!batch.isEmpty()) {
-                batchPersistenceService.persistBatch(campaign.getId(), batch);
-                account.getPlan().strategy().checkRecipientLimit((long) historicalCount+totalResolved, batch.size());
-                totalResolved += batch.size();
-                offset += BATCH_SIZE;
-                batch = fetchBatch(connection, rolePassword, filterQuery, offset);
-            }
+            // Backward-compat: null audienceMode with filters → treat as FILTER.
+            AudienceMode mode = campaign.getAudienceMode();
+            if (mode == null) mode = AudienceMode.FILTER;
+
+            int totalResolved = mode == AudienceMode.FILTER
+                    ? resolveByFilters(campaign, connection, rolePassword, account, historicalCount)
+                    : resolveByExplicitIds(campaign, connection, rolePassword, account, historicalCount, mode);
 
             campaign.setStatus(CampaignStatus.SENDING);
             campaign.setRecipientCount(totalResolved);
@@ -77,6 +75,64 @@ public class ResolutionService {
             failCampaign(campaign);
             log.error("Resolution failed for campaign {}", campaign.getId(), e);
         }
+    }
+
+    private int resolveByFilters(Campaign campaign, Connection connection, String rolePassword,
+                                  Account account, int historicalCount) {
+        List<CampaignFilter> filters = filterRepository.findByCampaignId(campaign.getId());
+        FilterQuery filterQuery = filterSerializer.serialize(filters);
+        int totalResolved = 0;
+        int offset = 0;
+        List<RecipientRow> batch = fetchBatch(connection, rolePassword, filterQuery, offset);
+        while (!batch.isEmpty()) {
+            batchPersistenceService.persistBatch(campaign.getId(), batch);
+            account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
+            totalResolved += batch.size();
+            offset += BATCH_SIZE;
+            batch = fetchBatch(connection, rolePassword, filterQuery, offset);
+        }
+        return totalResolved;
+    }
+
+    private int resolveByExplicitIds(Campaign campaign, Connection connection, String rolePassword,
+                                      Account account, int historicalCount, AudienceMode mode) {
+        Set<String> excluded = campaign.getExcludedIds() != null
+                ? new HashSet<>(campaign.getExcludedIds()) : Set.of();
+
+        if (mode == AudienceMode.MANUAL) {
+            List<String> included = campaign.getIncludedIds() != null ? campaign.getIncludedIds() : List.of();
+            List<String> effectiveIds = included.stream()
+                    .filter(id -> !excluded.contains(id))
+                    .toList();
+            List<RecipientRow> candidates = externalRecipientQueryService.resolveByIds(connection, rolePassword, effectiveIds);
+            int totalResolved = 0;
+            for (int i = 0; i < candidates.size(); i += BATCH_SIZE) {
+                List<RecipientRow> batch = candidates.subList(i, Math.min(i + BATCH_SIZE, candidates.size()));
+                batchPersistenceService.persistBatch(campaign.getId(), batch);
+                account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
+                totalResolved += batch.size();
+            }
+            return totalResolved;
+        }
+
+        // ALL: cursor-paginated full-table scan, excluding excluded IDs per batch.
+        FilterQuery emptyQuery = filterSerializer.serialize(List.of());
+        int totalResolved = 0;
+        int offset = 0;
+        List<RecipientRow> rawBatch = fetchBatch(connection, rolePassword, emptyQuery, offset);
+        while (!rawBatch.isEmpty()) {
+            List<RecipientRow> batch = rawBatch.stream()
+                    .filter(r -> !excluded.contains(r.userId()))
+                    .toList();
+            if (!batch.isEmpty()) {
+                batchPersistenceService.persistBatch(campaign.getId(), batch);
+                account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
+                totalResolved += batch.size();
+            }
+            offset += BATCH_SIZE;
+            rawBatch = fetchBatch(connection, rolePassword, emptyQuery, offset);
+        }
+        return totalResolved;
     }
 
     private List<RecipientRow> fetchBatch(Connection connection, String rolePassword,
