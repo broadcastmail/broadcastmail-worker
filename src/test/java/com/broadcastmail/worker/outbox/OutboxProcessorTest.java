@@ -9,6 +9,7 @@ import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
+import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +23,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -46,6 +48,9 @@ class OutboxProcessorTest {
     @Mock
     private CampaignRepository campaignRepository;
 
+    @Mock
+    private TemplateAttributeService templateAttributeService;
+
     @InjectMocks
     private OutboxProcessor outboxProcessor;
 
@@ -57,6 +62,7 @@ class OutboxProcessorTest {
         recipient = CampaignRecipient.builder()
                 .id(UUID.randomUUID())
                 .campaignId(UUID.randomUUID())
+                .externalUserId("ext-user-123")
                 .email("user@example.com")
                 .status(RecipientStatus.QUEUED)
                 .idempotencyKey("campaign-id:user-id")
@@ -66,6 +72,8 @@ class OutboxProcessorTest {
 
         when(campaignRecipientRepository.findById(outboxEntry.getCampaignRecipientId()))
                 .thenReturn(Optional.of(recipient));
+        when(templateAttributeService.getForCampaign(recipient.getCampaignId()))
+                .thenReturn(Map.of());
     }
 
     private OutboxEntry processingEntryWithAttempts(int attempts) {
@@ -82,7 +90,7 @@ class OutboxProcessorTest {
     @Test
     void shouldMarkOutboxDoneAndRecipientSentOnSuccessfulSend() {
         // Given
-        when(emailSendService.sendEmail(recipient))
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenReturn(new SendResult("msg-123", recipient));
 
         // When
@@ -99,7 +107,8 @@ class OutboxProcessorTest {
     void shouldDeliverEmailSuccessfullyRegardlessOfPriorAttempts(int attempts) {
         // Given
         outboxEntry = processingEntryWithAttempts(attempts);
-        when(emailSendService.sendEmail(recipient))
+        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenReturn(new SendResult("msg-123", recipient));
 
         // When
@@ -113,7 +122,7 @@ class OutboxProcessorTest {
     @Test
     void shouldRescheduleOutboxForNextDayWithoutIncrementingAttemptsOnRateLimit() {
         // Given
-        when(emailSendService.sendEmail(recipient))
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
 
         // When
@@ -129,7 +138,7 @@ class OutboxProcessorTest {
     @Test
     void shouldIncrementAttemptsAndApplyExponentialBackoffOnTransientFailure() {
         // Given
-        when(emailSendService.sendEmail(recipient))
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenThrow(new EmailSendException("Resend error"));
 
         // When
@@ -146,7 +155,8 @@ class OutboxProcessorTest {
     void shouldMarkOutboxAndRecipientFailedAfterThreeFailedAttempts() {
         // Given
         outboxEntry = processingEntryWithAttempts(3);
-        when(emailSendService.sendEmail(recipient))
+        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenThrow(new EmailSendException("Final failure"));
 
         // When
@@ -166,7 +176,7 @@ class OutboxProcessorTest {
     @Test
     void shouldIncrementCampaignSentCountOnSuccessfulSend() {
         // Given
-        when(emailSendService.sendEmail(recipient))
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenReturn(new SendResult("msg-123", recipient));
 
         // When
@@ -180,7 +190,8 @@ class OutboxProcessorTest {
     void shouldNotIncrementCampaignSentCountOnFailedSend() {
         // Given
         outboxEntry = processingEntryWithAttempts(3);
-        when(emailSendService.sendEmail(recipient))
+        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenThrow(new EmailSendException("Final failure"));
 
         // When
@@ -193,7 +204,7 @@ class OutboxProcessorTest {
     @Test
     void shouldSkipCampaignCompletionCheckWhenRateLimited() {
         // Given
-        when(emailSendService.sendEmail(recipient))
+        when(emailSendService.sendEmail(eq(recipient), any()))
                 .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
 
         // When

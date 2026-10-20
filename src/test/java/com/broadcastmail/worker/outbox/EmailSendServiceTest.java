@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -100,7 +101,7 @@ class EmailSendServiceTest {
                 .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient);
+        emailSendService.sendEmail(recipient, Map.of());
 
         // Then
         verify(resendClient).sendEmail(
@@ -120,7 +121,7 @@ class EmailSendServiceTest {
                 .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient);
+        emailSendService.sendEmail(recipient, Map.of());
 
         // Then
         verify(unsubscribeTokenService).generateUnsubscribeUrl(recipient.getId());
@@ -140,7 +141,7 @@ class EmailSendServiceTest {
                 .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient);
+        emailSendService.sendEmail(recipient, Map.of());
 
         // Then
         verify(resendClient).sendEmail(anyString(), any(), eq("idempotency-key-123"));
@@ -153,7 +154,7 @@ class EmailSendServiceTest {
                 .thenReturn(Optional.empty());
 
         // When / Then
-        assertThatThrownBy(() -> emailSendService.sendEmail(recipient))
+        assertThatThrownBy(() -> emailSendService.sendEmail(recipient, Map.of()))
                 .isInstanceOf(CampaignNotFoundException.class);
     }
 
@@ -166,7 +167,7 @@ class EmailSendServiceTest {
                 .thenReturn(Optional.empty());
 
         // When / Then
-        assertThatThrownBy(() -> emailSendService.sendEmail(recipient))
+        assertThatThrownBy(() -> emailSendService.sendEmail(recipient, Map.of()))
                 .isInstanceOf(EmailProviderNotFoundException.class);
     }
 }
