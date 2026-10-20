@@ -19,11 +19,16 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 public class EmailSendService {
+
+    private static final Pattern TEMPLATE_VAR_PATTERN = Pattern.compile("\\{\\{([a-zA-Z_]\\w*)\\}\\}");
 
     private final CampaignRepository campaignRepository;
     private final EmailProviderRepository emailProviderRepository;
@@ -38,7 +43,7 @@ public class EmailSendService {
             .expireAfterWrite(Duration.ofSeconds(30))
             .build();
 
-    public SendResult sendEmail(CampaignRecipient recipient) {
+    public SendResult sendEmail(CampaignRecipient recipient, Map<String, Object> attrs) {
 
         Campaign campaign = campaignCache.get(recipient.getCampaignId(), id ->
                 campaignRepository.findById(id)
@@ -50,8 +55,9 @@ public class EmailSendService {
 
         String apiKey = SecurityUtil.decrypt(emailProvider.getEncryptedApiKey(), encryptionProperties.key());
 
+        String bodyHtml = applyTemplateVariables(campaign.getBodyHtml(), attrs);
         String unsubscribeUrl = unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId());
-        String bodyWithUnsubscribe = campaign.getBodyHtml() +
+        String bodyWithUnsubscribe = bodyHtml +
                 "<br><br><a href=\"" + unsubscribeUrl + "\">Unsubscribe</a>";
 
         ResendSendRequest request = new ResendSendRequest(
@@ -64,5 +70,21 @@ public class EmailSendService {
 
         String messageId = resendClient.sendEmail(apiKey, request, recipient.getIdempotencyKey());
         return new SendResult(messageId, recipient);
+    }
+
+    void evictCampaign(UUID campaignId) {
+        campaignCache.invalidate(campaignId);
+    }
+
+    private static String applyTemplateVariables(String html, Map<String, Object> attrs) {
+        if (!html.contains("{{")) return html;
+        StringBuffer sb = new StringBuffer();
+        Matcher m = TEMPLATE_VAR_PATTERN.matcher(html);
+        while (m.find()) {
+            Object val = attrs.get(m.group(1));
+            m.appendReplacement(sb, Matcher.quoteReplacement(val != null ? val.toString() : ""));
+        }
+        m.appendTail(sb);
+        return sb.toString();
     }
 }

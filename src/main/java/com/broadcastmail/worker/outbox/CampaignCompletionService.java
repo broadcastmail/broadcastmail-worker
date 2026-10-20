@@ -6,6 +6,7 @@ import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatusCounts;
+import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,27 +19,31 @@ import java.util.UUID;
 public class CampaignCompletionService {
     private final CampaignRepository campaignRepository;
     private final CampaignRecipientRepository campaignRecipientRepository;
+    private final EmailSendService emailSendService;
+    private final TemplateAttributeService templateAttributeService;
 
-    public void  checkAndComplete(UUID campaignId)
-    {
+    public void checkAndComplete(UUID campaignId) {
         RecipientStatusCounts counts = campaignRecipientRepository.countStatusesByCampaignId(campaignId);
         if (counts.getQueued() > 0) return;
         long total = counts.getTotal();
         long failed = counts.getFailed();
 
         Campaign campaign = campaignRepository.findById(campaignId)
-                .orElseThrow(()->new CampaignNotFoundException(campaignId));
+                .orElseThrow(() -> new CampaignNotFoundException(campaignId));
         CampaignStatus finalStatus;
         if (failed == total) {
             finalStatus = CampaignStatus.FAILED;
         } else if ((double) failed / total > 0.1) {
             finalStatus = CampaignStatus.PARTIALLY_FAILED;
         } else {
-                finalStatus = CampaignStatus.SENT;
+            finalStatus = CampaignStatus.SENT;
         }
         campaign.setStatus(finalStatus);
         campaign.setFailedCount(Math.toIntExact(failed));
         campaign.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
         campaignRepository.save(campaign);
+
+        emailSendService.evictCampaign(campaignId);
+        templateAttributeService.invalidate(campaignId);
     }
 }

@@ -69,10 +69,10 @@ public class ResolutionService {
             campaignRepository.save(campaign);
 
         } catch (PlanLimitExceededException _) {
-            failCampaign(campaign);
+            failCampaign(campaign, "Recipient limit reached for your plan.");
             log.warn("Plan limit exceeded for campaign {}", campaign.getId());
         } catch (Exception e) {
-            failCampaign(campaign);
+            failCampaign(campaign, "Resolution failed: " + e.getMessage());
             log.error("Resolution failed for campaign {}", campaign.getId(), e);
         }
     }
@@ -141,8 +141,9 @@ public class ResolutionService {
                 connection, rolePassword, filterQuery, offset, BATCH_SIZE);
     }
 
-    private void failCampaign(Campaign campaign) {
+    private void failCampaign(Campaign campaign, String reason) {
         campaign.setStatus(CampaignStatus.FAILED);
+        campaign.setFailureReason(reason);
         campaignRepository.save(campaign);
     }
 }

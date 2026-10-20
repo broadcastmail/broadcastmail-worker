@@ -6,6 +6,7 @@ import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatusCounts;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
+import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -26,6 +27,8 @@ class CampaignCompletionServiceTest {
 
     @Mock private CampaignRepository campaignRepository;
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
+    @Mock private EmailSendService emailSendService;
+    @Mock private TemplateAttributeService templateAttributeService;
 
     @InjectMocks private CampaignCompletionService campaignCompletionService;
 

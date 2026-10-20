@@ -10,6 +10,7 @@ import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.RecipientNotFoundException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
+import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -26,16 +28,22 @@ public class OutboxProcessor {
     private final CampaignRecipientRepository campaignRecipientRepository;
     private final CampaignCompletionService campaignCompletionService;
     private final CampaignRepository campaignRepository;
+    private final TemplateAttributeService templateAttributeService;
 
     @Transactional
     public void process(OutboxEntry outboxEntry) {
         CampaignRecipient recipient = campaignRecipientRepository
                 .findById(outboxEntry.getCampaignRecipientId())
                 .orElseThrow(() -> new RecipientNotFoundException(outboxEntry.getCampaignRecipientId()));
+
+        Map<String, Map<String, Object>> campaignAttrs =
+                templateAttributeService.getForCampaign(recipient.getCampaignId());
+        Map<String, Object> attrs = campaignAttrs.getOrDefault(recipient.getExternalUserId(), Map.of());
+
         boolean recipientFailed = false;
 
         try {
-            SendResult result = emailSendService.sendEmail(recipient);
+            SendResult result = emailSendService.sendEmail(recipient, attrs);
             outboxEntry.setStatus(OutboxStatus.DONE);
             outboxEntryRepository.save(outboxEntry);
             recipient.setStatus(RecipientStatus.SENT);
