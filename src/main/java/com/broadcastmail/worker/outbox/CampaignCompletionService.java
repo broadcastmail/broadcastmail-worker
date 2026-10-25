@@ -41,6 +41,7 @@ public class CampaignCompletionService {
         campaign.setStatus(finalStatus);
         campaign.setFailedCount(Math.toIntExact(failed));
         campaign.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
+        campaign.setFailureReason(null);
         campaignRepository.save(campaign);
 
         emailSendService.evictCampaign(campaignId);

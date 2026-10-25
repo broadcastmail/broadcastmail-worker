@@ -7,11 +7,12 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.resend.Resend;
 import com.resend.core.exception.ResendException;
+import com.resend.services.batch.model.CreateBatchEmailsResponse;
 import com.resend.services.emails.model.CreateEmailOptions;
-import com.resend.services.emails.model.CreateEmailResponse;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.List;
 
 @Component
 public class ResendClient {
@@ -20,27 +21,27 @@ public class ResendClient {
             .expireAfterAccess(Duration.ofHours(1))
             .build();
 
-    public String sendEmail(String apiKey, ResendSendRequest request, String idempotencyKey) {
+    public CreateBatchEmailsResponse sendEmailBatch(String apiKey, List<ResendSendRequest> requests) {
+        List<CreateEmailOptions> emails = requests.stream()
+                .map(r -> CreateEmailOptions.builder()
+                        .from(r.from())
+                        .to(r.to())
+                        .subject(r.subject())
+                        .html(r.html())
+                        .addHeader("List-Unsubscribe", "<" + r.unsubscribeUrl() + ">")
+                        .addHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+                        .addHeader("Idempotency-Key", r.idempotencyKey())
+                        .build())
+                .toList();
         try {
             Resend resend = clientsByApiKey.get(apiKey, Resend::new);
-            CreateEmailOptions params = CreateEmailOptions.builder()
-                    .from(request.from())
-                    .to(request.to())
-                    .subject(request.subject())
-                    .html(request.html())
-                    .addHeader("List-Unsubscribe", "<" + request.unsubscribeUrl() + ">")
-                    .addHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
-                    .addHeader("Idempotency-Key", idempotencyKey)
-                    .build();
             assert resend != null;
-            CreateEmailResponse response = resend.emails().send(params);
-            return response.getId();
+            return resend.batch().send(emails);
         } catch (ResendException e) {
-            if(e.getStatusCode()==429) // Code 429 - Too many requests
-            {
-                throw new ResendRateLimitException("Too many email emails sent in a short period of time.");
+            if (e.getStatusCode() == 429) {
+                throw new ResendRateLimitException("Too many emails sent in a short period of time.");
             }
-            throw new EmailSendException("Failed to send email: " + e.getMessage());
+            throw new EmailSendException("Failed to send email batch: " + e.getMessage());
         }
     }
 }
