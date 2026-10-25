@@ -78,6 +78,7 @@ class OutboxProcessorTest {
                 .attempts(attempts)
                 .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
                 .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
+                .createdAt(OffsetDateTime.now(ZoneId.systemDefault()))
                 .build();
     }
 
