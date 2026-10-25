@@ -23,3 +23,7 @@ app:
   frontend:
     url: ${FRONTEND_URL:http://localhost:3000}
   unsubscribeSecret: ${UNSUBSCRIBE_SECRET}
+  outbox:
+    # How many entries to claim per poll cycle. Set higher for paid Resend plans.
+    # The worker chunks into batches of 100 (Resend batch API max) automatically.
+    poll-limit: ${OUTBOX_POLL_LIMIT:1000}

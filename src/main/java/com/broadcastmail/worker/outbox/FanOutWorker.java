@@ -17,6 +17,7 @@ public class FanOutWorker {
     @Scheduled(fixedDelay = 5000)
     public void poll() {
         List<OutboxEntry> claimed = outboxPoller.pollAndClaim();
-        claimed.forEach(outboxProcessor::process);
+        if (claimed.isEmpty()) return;
+        outboxProcessor.processAll(claimed);
     }
 }

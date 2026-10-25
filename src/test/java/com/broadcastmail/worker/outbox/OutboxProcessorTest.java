@@ -1,13 +1,14 @@
 package com.broadcastmail.worker.outbox;
 
+import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
+import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.outbox.OutboxEntry;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
-import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
 import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,16 +16,18 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
 import org.mockito.InOrder;
+import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,29 +36,19 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class OutboxProcessorTest {
 
-    @Mock
-    private EmailSendService emailSendService;
-
-    @Mock
-    private OutboxEntryRepository outboxEntryRepository;
-
-    @Mock
-    private CampaignRecipientRepository campaignRecipientRepository;
-
-    @Mock
-    private CampaignCompletionService campaignCompletionService;
-
-    @Mock
-    private CampaignRepository campaignRepository;
-
-    @Mock
-    private TemplateAttributeService templateAttributeService;
+    @Mock private EmailSendService emailSendService;
+    @Mock private OutboxEntryRepository outboxEntryRepository;
+    @Mock private CampaignRecipientRepository campaignRecipientRepository;
+    @Mock private CampaignCompletionService campaignCompletionService;
+    @Mock private CampaignRepository campaignRepository;
+    @Mock private TemplateAttributeService templateAttributeService;
 
     @InjectMocks
     private OutboxProcessor outboxProcessor;
 
     private OutboxEntry outboxEntry;
     private CampaignRecipient recipient;
+    private Map<UUID, CampaignRecipient> recipientMap;
 
     @BeforeEach
     void setUp() {
@@ -69,10 +62,11 @@ class OutboxProcessorTest {
                 .build();
 
         outboxEntry = processingEntryWithAttempts(0);
+        recipientMap = Map.of(recipient.getId(), recipient);
 
-        when(campaignRecipientRepository.findById(outboxEntry.getCampaignRecipientId()))
-                .thenReturn(Optional.of(recipient));
-        when(templateAttributeService.getForCampaign(recipient.getCampaignId()))
+        when(emailSendService.getRemainingDailyQuota(recipient.getCampaignId()))
+                .thenReturn(OptionalInt.empty());
+        lenient().when(templateAttributeService.getForCampaign(recipient.getCampaignId()))
                 .thenReturn(Map.of());
     }
 
@@ -84,19 +78,24 @@ class OutboxProcessorTest {
                 .attempts(attempts)
                 .nextAttemptAt(OffsetDateTime.now(ZoneId.systemDefault()))
                 .lastAttemptedAt(OffsetDateTime.now(ZoneId.systemDefault()))
+                .createdAt(OffsetDateTime.now(ZoneId.systemDefault()))
                 .build();
+    }
+
+    private BatchSendOutcome success() {
+        return new BatchSendOutcome(recipient, "msg-123", null);
+    }
+
+    private BatchSendOutcome failure(String reason) {
+        return new BatchSendOutcome(recipient, null, reason);
     }
 
     @Test
     void shouldMarkOutboxDoneAndRecipientSentOnSuccessfulSend() {
-        // Given
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenReturn(new SendResult("msg-123", recipient));
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(success()));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.DONE);
         assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.SENT);
         assertThat(recipient.getResendMessageId()).isEqualTo("msg-123");
@@ -105,30 +104,22 @@ class OutboxProcessorTest {
     @ParameterizedTest
     @ValueSource(ints = {0, 1, 2})
     void shouldDeliverEmailSuccessfullyRegardlessOfPriorAttempts(int attempts) {
-        // Given
         outboxEntry = processingEntryWithAttempts(attempts);
-        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenReturn(new SendResult("msg-123", recipient));
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(success()));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.DONE);
         assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.SENT);
     }
 
     @Test
-    void shouldRescheduleOutboxForNextDayWithoutIncrementingAttemptsOnRateLimit() {
-        // Given
-        when(emailSendService.sendEmail(eq(recipient), any()))
+    void shouldRescheduleOutboxForNextDayWithoutIncrementingAttemptsOnRateLimitException() {
+        when(emailSendService.sendEmailBatch(any(), any()))
                 .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
         assertThat(outboxEntry.getAttempts()).isZero();
         assertThat(outboxEntry.getNextAttemptAt().toLocalDate())
@@ -136,33 +127,62 @@ class OutboxProcessorTest {
     }
 
     @Test
-    void shouldIncrementAttemptsAndApplyExponentialBackoffOnTransientFailure() {
-        // Given
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenThrow(new EmailSendException("Resend error"));
+    void shouldRescheduleForNextDayWhenQuotaExhaustedBeforeSend() {
+        when(emailSendService.getRemainingDailyQuota(recipient.getCampaignId()))
+                .thenReturn(OptionalInt.of(0));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
-        assertThat(outboxEntry.getAttempts()).isEqualTo(1);
-        assertThat(outboxEntry.getNextAttemptAt())
-                .isAfter(OffsetDateTime.now(ZoneId.systemDefault()));
+        assertThat(outboxEntry.getNextAttemptAt().toLocalDate())
+                .isEqualTo(LocalDate.now(ZoneId.systemDefault()).plusDays(1));
+        verify(emailSendService, never()).sendEmailBatch(any(), any());
     }
 
     @Test
-    void shouldMarkOutboxAndRecipientFailedAfterThreeFailedAttempts() {
-        // Given
+    void shouldMarkCampaignRateLimitedOnRateLimitException() {
+        Campaign campaign = Campaign.builder().id(recipient.getCampaignId()).status(CampaignStatus.SENDING).build();
+        when(emailSendService.sendEmailBatch(any(), any()))
+                .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
+        when(campaignRepository.findById(recipient.getCampaignId())).thenReturn(Optional.of(campaign));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        assertThat(campaign.getFailureReason()).isEqualTo("RATE_LIMITED");
+        verify(campaignRepository).save(campaign);
+    }
+
+    @Test
+    void shouldNotSaveCampaignAgainIfAlreadyMarkedRateLimited() {
+        Campaign campaign = Campaign.builder().id(recipient.getCampaignId()).status(CampaignStatus.SENDING)
+                .failureReason("RATE_LIMITED").build();
+        when(emailSendService.sendEmailBatch(any(), any()))
+                .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
+        when(campaignRepository.findById(recipient.getCampaignId())).thenReturn(Optional.of(campaign));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        verify(campaignRepository, never()).save(campaign);
+    }
+
+    @Test
+    void shouldIncrementAttemptsAndApplyBackoffOnTransientFailure() {
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(failure("Resend error")));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outboxEntry.getAttempts()).isEqualTo(1);
+        assertThat(outboxEntry.getNextAttemptAt()).isAfter(OffsetDateTime.now(ZoneId.systemDefault()));
+    }
+
+    @Test
+    void shouldMarkOutboxAndRecipientFailedAfterMaxAttempts() {
         outboxEntry = processingEntryWithAttempts(3);
-        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenThrow(new EmailSendException("Final failure"));
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(failure("Final failure")));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.FAILED);
         assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.FAILED);
         assertThat(recipient.getFailedReason()).isEqualTo("Final failure");
@@ -174,43 +194,31 @@ class OutboxProcessorTest {
     }
 
     @Test
-    void shouldIncrementCampaignSentCountOnSuccessfulSend() {
-        // Given
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenReturn(new SendResult("msg-123", recipient));
+    void shouldIncrementCampaignSentCountOnSuccess() {
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(success()));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         verify(campaignRepository).incrementSentCount(recipient.getCampaignId());
     }
 
     @Test
     void shouldNotIncrementCampaignSentCountOnFailedSend() {
-        // Given
         outboxEntry = processingEntryWithAttempts(3);
-        when(templateAttributeService.getForCampaign(recipient.getCampaignId())).thenReturn(Map.of());
-        when(emailSendService.sendEmail(eq(recipient), any()))
-                .thenThrow(new EmailSendException("Final failure"));
+        when(emailSendService.sendEmailBatch(any(), any())).thenReturn(List.of(failure("Final failure")));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         verify(campaignRepository, never()).incrementSentCount(any());
     }
 
     @Test
     void shouldSkipCampaignCompletionCheckWhenRateLimited() {
-        // Given
-        when(emailSendService.sendEmail(eq(recipient), any()))
+        when(emailSendService.sendEmailBatch(any(), any()))
                 .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
 
-        // When
-        outboxProcessor.process(outboxEntry);
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
 
-        // Then
         verify(campaignCompletionService, never()).checkAndComplete(any());
     }
 }

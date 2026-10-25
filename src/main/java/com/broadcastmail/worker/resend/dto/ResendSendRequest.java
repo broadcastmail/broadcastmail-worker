@@ -7,5 +7,6 @@ public record ResendSendRequest(
         List<String> to,
         String subject,
         String html,
-        String unsubscribeUrl
+        String unsubscribeUrl,
+        String idempotencyKey
 ) {}

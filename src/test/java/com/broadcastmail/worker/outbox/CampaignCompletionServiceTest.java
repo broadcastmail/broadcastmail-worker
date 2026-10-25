@@ -69,6 +69,23 @@ class CampaignCompletionServiceTest {
     }
 
     @Test
+    void shouldClearRateLimitedReasonOnCompletion() {
+        // Given
+        Campaign campaign = Campaign.builder().id(CAMPAIGN_ID).status(CampaignStatus.SENDING)
+                .failureReason("RATE_LIMITED").build();
+        when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))
+                .thenReturn(counts(0, 0, 5));
+        when(campaignRepository.findById(CAMPAIGN_ID)).thenReturn(Optional.of(campaign));
+
+        // When
+        campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
+
+        // Then
+        Campaign saved = capturesSaved();
+        assertThat(saved.getFailureReason()).isNull();
+    }
+
+    @Test
     void shouldMarkCampaignAsFailedWhenAllFailed() {
         // Given
         when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))

@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,7 +42,7 @@ class OutboxPollerTest {
     void shouldMarkClaimedRowsAsProcessing() {
         // Given
         OutboxEntry entry = pendingEntry();
-        when(outboxEntryRepository.pollPending()).thenReturn(List.of(entry));
+        when(outboxEntryRepository.pollPending(anyInt())).thenReturn(List.of(entry));
 
         // When
         outboxPoller.pollAndClaim();
@@ -55,7 +56,7 @@ class OutboxPollerTest {
     void shouldSetLastAttemptedAtWhenClaiming() {
         // Given
         OutboxEntry entry = pendingEntry();
-        when(outboxEntryRepository.pollPending()).thenReturn(List.of(entry));
+        when(outboxEntryRepository.pollPending(anyInt())).thenReturn(List.of(entry));
 
         // When
         outboxPoller.pollAndClaim();
@@ -67,7 +68,7 @@ class OutboxPollerTest {
     @Test
     void shouldReturnEmptyListWhenNoPendingRows() {
         // Given
-        when(outboxEntryRepository.pollPending()).thenReturn(List.of());
+        when(outboxEntryRepository.pollPending(anyInt())).thenReturn(List.of());
 
         // When
         List<OutboxEntry> result = outboxPoller.pollAndClaim();

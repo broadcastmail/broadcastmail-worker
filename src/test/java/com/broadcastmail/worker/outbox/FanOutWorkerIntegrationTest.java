@@ -20,6 +20,8 @@ import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
+import com.resend.services.batch.model.BatchEmail;
+import com.resend.services.batch.model.CreateBatchEmailsResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.*;
 
@@ -130,14 +133,13 @@ class FanOutWorkerIntegrationTest {
     @Test
     void shouldProcessAllPendingOutboxRowsOnPoll() {
         // Given
-        doReturn("msg-123").when(resendClient).sendEmail(anyString(), any(), anyString());
+        doReturn(batchSuccess("msg-123")).when(resendClient).sendEmailBatch(anyString(), any());
 
         // When
         fanOutWorker.poll();
 
         // Then
         OutboxEntry processed = outboxEntryRepository.findById(outboxEntry.getId()).orElseThrow();
-
         CampaignRecipient processedRecipient = campaignRecipientRepository.findById(recipient.getId()).orElseThrow();
 
         assertThat(processed.getStatus()).isEqualTo(OutboxStatus.DONE);
@@ -147,7 +149,7 @@ class FanOutWorkerIntegrationTest {
 
     @Test
     void shouldNotSendDuplicateEmailsWhenPolledConcurrently() throws Exception {
-        doReturn("msg-123").when(resendClient).sendEmail(anyString(), any(), anyString());
+        doReturn(batchSuccess("msg-123")).when(resendClient).sendEmailBatch(anyString(), any());
         try (ExecutorService executorService = Executors.newFixedThreadPool(2)) {
             CountDownLatch latch = new CountDownLatch(1);
 
@@ -174,13 +176,28 @@ class FanOutWorkerIntegrationTest {
             task2.get();
         }
 
-        verify(resendClient, times(1)).sendEmail(anyString(), any(), anyString());
+        verify(resendClient, times(1)).sendEmailBatch(anyString(), any());
+    }
+
+    @Test
+    void shouldNotProcessOutboxEntriesForFutureScheduledCampaign() {
+        // Given
+        campaign.setScheduledAt(OffsetDateTime.now(ZoneId.systemDefault()).plusHours(1));
+        campaignRepository.save(campaign);
+
+        // When
+        fanOutWorker.poll();
+
+        // Then
+        OutboxEntry entry = outboxEntryRepository.findById(outboxEntry.getId()).orElseThrow();
+        assertThat(entry.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        verifyNoInteractions(resendClient);
     }
 
     @Test
     void shouldUpdateCampaignStatusToSentAfterAllRowsProcessed() {
         // Given
-        doReturn("msg-123").when(resendClient).sendEmail(anyString(), any(), anyString());
+        doReturn(batchSuccess("msg-123")).when(resendClient).sendEmailBatch(anyString(), any());
 
         // When
         fanOutWorker.poll();
@@ -188,5 +205,9 @@ class FanOutWorkerIntegrationTest {
         // Then
         Campaign processed = campaignRepository.findById(campaign.getId()).orElseThrow();
         assertThat(processed.getStatus()).isEqualTo(CampaignStatus.SENT);
+    }
+
+    private static CreateBatchEmailsResponse batchSuccess(String messageId) {
+        return new CreateBatchEmailsResponse(List.of(new BatchEmail(messageId)), List.of());
     }
 }

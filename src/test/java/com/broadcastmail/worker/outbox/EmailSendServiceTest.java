@@ -6,23 +6,28 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.emailprovider.EmailProvider;
 import com.broadcastmail.common.emailprovider.EmailProviderRepository;
-import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
+import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.resend.ResendClient;
+import com.broadcastmail.worker.resend.ResendUsageService;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
 import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
+import com.resend.services.batch.model.BatchEmail;
+import com.resend.services.batch.model.CreateBatchEmailsResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.verify;
@@ -30,16 +35,11 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class EmailSendServiceTest {
-    @Mock
-    private CampaignRepository campaignRepository;
-    @Mock
-    private EmailProviderRepository emailProviderRepository;
-    @Mock
-    private ResendClient resendClient;
-
-    @Mock
-    private UnsubscribeTokenService unsubscribeTokenService;
-
+    @Mock private CampaignRepository campaignRepository;
+    @Mock private EmailProviderRepository emailProviderRepository;
+    @Mock private ResendClient resendClient;
+    @Mock private ResendUsageService resendUsageService;
+    @Mock private UnsubscribeTokenService unsubscribeTokenService;
 
     private EmailSendService emailSendService;
     private Campaign campaign;
@@ -47,6 +47,7 @@ class EmailSendServiceTest {
     private CampaignRecipient recipient;
 
     private static final String TEST_KEY = "12345678901234567890123456789012";
+    private static final String TEST_UNSUBSCRIBE_URL = "https://app.example.com/unsubscribe?token=test-token";
     private final EncryptionProperties encryptionProperties = new EncryptionProperties(TEST_KEY);
 
     @BeforeEach
@@ -55,6 +56,7 @@ class EmailSendServiceTest {
                 campaignRepository,
                 emailProviderRepository,
                 resendClient,
+                resendUsageService,
                 encryptionProperties,
                 unsubscribeTokenService
         );
@@ -75,99 +77,84 @@ class EmailSendServiceTest {
         recipient = CampaignRecipient.builder()
                 .id(UUID.randomUUID())
                 .campaignId(campaign.getId())
+                .externalUserId("ext-user-1")
                 .email("user@example.com")
                 .idempotencyKey("idempotency-key-123")
                 .status(RecipientStatus.QUEUED)
                 .build();
-
     }
-
-    private static final String TEST_UNSUBSCRIBE_URL = "https://app.example.com/unsubscribe?token=test-token";
 
     private void stubHappyPath() {
-        when(campaignRepository.findById(campaign.getId()))
-                .thenReturn(Optional.of(campaign));
-        when(emailProviderRepository.findByAccountId(campaign.getAccountId()))
-                .thenReturn(Optional.of(emailProvider));
-        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId()))
-                .thenReturn(TEST_UNSUBSCRIBE_URL);
+        when(campaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
+        when(emailProviderRepository.findByAccountId(campaign.getAccountId())).thenReturn(Optional.of(emailProvider));
+        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId())).thenReturn(TEST_UNSUBSCRIBE_URL);
+        when(resendClient.sendEmailBatch(anyString(), any()))
+                .thenReturn(new CreateBatchEmailsResponse(List.of(new BatchEmail("msg-123")), List.of()));
     }
 
     @Test
-    void shouldSendEmailWithCampaignSubjectAndBodyToRecipientAddress() {
+    void shouldSendBatchWithCampaignSubjectAndBodyToRecipientAddress() {
         // Given
         stubHappyPath();
-        when(resendClient.sendEmail(anyString(), any(ResendSendRequest.class), anyString()))
-                .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient, Map.of());
+        emailSendService.sendEmailBatch(List.of(recipient), Map.of());
 
         // Then
-        verify(resendClient).sendEmail(
-                anyString(),
-                argThat(req -> req.subject().equals("Hello subscribers")
-                        && req.html().equals("<p>Welcome</p><br><br><a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")
-                        && req.to().contains("user@example.com")),
-                eq("idempotency-key-123")
-        );
+        verify(resendClient).sendEmailBatch(anyString(), argThat((List<ResendSendRequest> reqs) -> {
+            ResendSendRequest req = reqs.get(0);
+            return req.to().contains("user@example.com")
+                    && req.subject().equals("Hello subscribers")
+                    && req.html().contains("<p>Welcome</p>")
+                    && req.html().contains("<a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")
+                    && req.idempotencyKey().equals("idempotency-key-123");
+        }));
     }
 
     @Test
-    void shouldGenerateUnsubscribeUrlForRecipientAndAppendItToBody() {
+    void shouldAppendUnsubscribeUrlToBody() {
         // Given
         stubHappyPath();
-        when(resendClient.sendEmail(anyString(), any(ResendSendRequest.class), anyString()))
-                .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient, Map.of());
+        emailSendService.sendEmailBatch(List.of(recipient), Map.of());
 
         // Then
         verify(unsubscribeTokenService).generateUnsubscribeUrl(recipient.getId());
-        verify(resendClient).sendEmail(
-                anyString(),
-                argThat(req -> req.unsubscribeUrl().equals(TEST_UNSUBSCRIBE_URL)
-                        && req.html().contains("<a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")),
-                anyString()
-        );
+        verify(resendClient).sendEmailBatch(anyString(), argThat((List<ResendSendRequest> reqs) ->
+                reqs.get(0).html().contains("<a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")));
     }
 
     @Test
-    void shouldPassIdempotencyKeyToResend() {
+    void shouldReturnMessageIdFromBatchResponse() {
         // Given
         stubHappyPath();
-        when(resendClient.sendEmail(anyString(), any(ResendSendRequest.class), anyString()))
-                .thenReturn("msg-123");
 
         // When
-        emailSendService.sendEmail(recipient, Map.of());
+        List<BatchSendOutcome> outcomes = emailSendService.sendEmailBatch(List.of(recipient), Map.of());
 
         // Then
-        verify(resendClient).sendEmail(anyString(), any(), eq("idempotency-key-123"));
+        assertThat(outcomes).hasSize(1);
+        assertThat(outcomes.get(0).messageId()).isEqualTo("msg-123");
+        assertThat(outcomes.get(0).succeeded()).isTrue();
     }
 
     @Test
     void shouldThrowWhenCampaignNotFound() {
-        // Given
-        when(campaignRepository.findById(campaign.getId()))
-                .thenReturn(Optional.empty());
+        when(campaignRepository.findById(campaign.getId())).thenReturn(Optional.empty());
 
-        // When / Then
-        assertThatThrownBy(() -> emailSendService.sendEmail(recipient, Map.of()))
+        List<CampaignRecipient> recipients = List.of(recipient);
+        assertThatThrownBy(() -> emailSendService.sendEmailBatch(recipients, Map.of()))
                 .isInstanceOf(CampaignNotFoundException.class);
     }
 
     @Test
     void shouldThrowWhenEmailProviderNotFound() {
-        // Given
-        when(campaignRepository.findById(campaign.getId()))
-                .thenReturn(Optional.of(campaign));
-        when(emailProviderRepository.findByAccountId(campaign.getAccountId()))
-                .thenReturn(Optional.empty());
+        when(campaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
+        when(emailProviderRepository.findByAccountId(campaign.getAccountId())).thenReturn(Optional.empty());
 
-        // When / Then
-        assertThatThrownBy(() -> emailSendService.sendEmail(recipient, Map.of()))
+        List<CampaignRecipient> recipients = List.of(recipient);
+        assertThatThrownBy(() -> emailSendService.sendEmailBatch(recipients, Map.of()))
                 .isInstanceOf(EmailProviderNotFoundException.class);
     }
 }
