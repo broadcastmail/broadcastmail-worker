@@ -18,7 +18,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
-class UnsubscribeTokenServiceTest {
+class SuppressionsTokenServiceTest {
     private UnsubscribeTokenService unsubscribeTokenService;
 
     private static final String TEST_SECRET = "12345678901234567890123456789012";
