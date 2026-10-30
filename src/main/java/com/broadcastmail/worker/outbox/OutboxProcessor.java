@@ -125,7 +125,14 @@ public class OutboxProcessor {
         for (int i = 0; i < outcomes.size(); i++) {
             BatchSendOutcome outcome = outcomes.get(i);
             OutboxEntry entry = chunk.get(i).getKey();
-            if (outcome.succeeded()) {
+            if (outcome.suppressed()) {
+                entry.setStatus(OutboxStatus.DONE);
+                outboxEntryRepository.save(entry);
+                outcome.recipient().setStatus(RecipientStatus.FAILED);
+                outcome.recipient().setFailedReason("suppressed");
+                campaignRecipientRepository.save(outcome.recipient());
+                anyFailed = true;
+            } else if (outcome.succeeded()) {
                 markSent(entry, outcome, campaignId);
             } else {
                 if (handleEmailFailure(entry, outcome.recipient(), outcome.errorMessage())) anyFailed = true;

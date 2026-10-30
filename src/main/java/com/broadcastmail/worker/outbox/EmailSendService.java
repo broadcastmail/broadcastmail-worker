@@ -5,6 +5,8 @@ import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.emailprovider.EmailProvider;
 import com.broadcastmail.common.emailprovider.EmailProviderRepository;
+import com.broadcastmail.common.suppressions.Suppression;
+import com.broadcastmail.common.suppressions.SuppressionsRepository;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
@@ -23,13 +25,16 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +48,7 @@ public class EmailSendService {
     private final ResendUsageService resendUsageService;
     private final EncryptionProperties encryptionProperties;
     private final UnsubscribeTokenService unsubscribeTokenService;
+    private final SuppressionsRepository suppressionsRepository;
 
     private final Cache<UUID, Campaign> campaignCache = Caffeine.newBuilder()
             .expireAfterWrite(Duration.ofSeconds(30))
@@ -68,8 +74,36 @@ public class EmailSendService {
 
         String apiKey = SecurityUtil.decrypt(emailProvider.getEncryptedApiKey(), encryptionProperties.key());
 
+        List<String> emails = recipients.stream().map(CampaignRecipient::getEmail).toList();
+        Set<String> suppressed = suppressionsRepository
+                .findByAccountIdAndEmailIn(campaign.getAccountId(), emails)
+                .stream()
+                .map(Suppression::getEmail)
+                .collect(Collectors.toSet());
+        List<CampaignRecipient> toSend = recipients.stream()
+                .filter(r -> !suppressed.contains(r.getEmail()))
+                .toList();
+
+        List<BatchSendOutcome> outcomes = new ArrayList<>(Collections.nCopies(recipients.size(), null));
+        for (int i = 0; i < recipients.size(); i++) {
+            if (suppressed.contains(recipients.get(i).getEmail())) {
+                outcomes.set(i, new BatchSendOutcome(recipients.get(i), null, "SUPPRESSED"));
+            }
+        }
+
+        if (toSend.isEmpty()) return outcomes;
+
+        List<ResendSendRequest> requests = buildRequests(toSend, campaign, emailProvider, campaignAttrs);
+        CreateBatchEmailsResponse response = resendClient.sendEmailBatch(apiKey, requests);
+        fillSendOutcomes(outcomes, toSend, response);
+        return outcomes;
+    }
+
+    private List<ResendSendRequest> buildRequests(List<CampaignRecipient> toSend, Campaign campaign,
+                                                   EmailProvider emailProvider,
+                                                   Map<String, Map<String, Object>> campaignAttrs) {
         List<ResendSendRequest> requests = new ArrayList<>();
-        for (CampaignRecipient recipient : recipients) {
+        for (CampaignRecipient recipient : toSend) {
             String extId = recipient.getExternalUserId();
             Map<String, Object> attrs = extId != null ? campaignAttrs.getOrDefault(extId, Map.of()) : Map.of();
             String bodyHtml = applyTemplateVariables(campaign.getBodyHtml(), attrs);
@@ -84,9 +118,11 @@ public class EmailSendService {
                     recipient.getIdempotencyKey()
             ));
         }
+        return requests;
+    }
 
-        CreateBatchEmailsResponse response = resendClient.sendEmailBatch(apiKey, requests);
-
+    private void fillSendOutcomes(List<BatchSendOutcome> outcomes, List<CampaignRecipient> toSend,
+                                   CreateBatchEmailsResponse response) {
         Map<Integer, String> failedIndexes = new HashMap<>();
         if (response.getErrors() != null) {
             for (BatchError error : response.getErrors()) {
@@ -95,19 +131,18 @@ public class EmailSendService {
         }
 
         List<BatchEmail> data = response.getData() != null ? response.getData() : List.of();
-        List<BatchSendOutcome> outcomes = new ArrayList<>();
         int successIndex = 0;
-        for (int i = 0; i < recipients.size(); i++) {
-            CampaignRecipient recipient = recipients.get(i);
-            if (failedIndexes.containsKey(i)) {
-                outcomes.add(new BatchSendOutcome(recipient, null, failedIndexes.get(i)));
+        int sendIdx = 0;
+        for (int i = 0; i < outcomes.size(); i++) {
+            if (outcomes.get(i) != null) continue;
+            CampaignRecipient recipient = toSend.get(sendIdx++);
+            if (failedIndexes.containsKey(sendIdx - 1)) {
+                outcomes.set(i, new BatchSendOutcome(recipient, null, failedIndexes.get(sendIdx - 1)));
             } else {
-                String messageId = successIndex < data.size() ? data.get(successIndex).getId() : null;
-                outcomes.add(new BatchSendOutcome(recipient, messageId, null));
-                successIndex++;
+                String messageId = successIndex < data.size() ? data.get(successIndex++).getId() : null;
+                outcomes.set(i, new BatchSendOutcome(recipient, messageId, null));
             }
         }
-        return outcomes;
     }
 
     public OptionalInt getRemainingDailyQuota(UUID campaignId) {

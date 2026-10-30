@@ -10,4 +10,7 @@ public record BatchSendOutcome(
     boolean succeeded() {
         return messageId != null;
     }
+    boolean suppressed() {
+        return "SUPPRESSED".equals(errorMessage);
+    }
 }

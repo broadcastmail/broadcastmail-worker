@@ -6,6 +6,8 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.emailprovider.EmailProvider;
 import com.broadcastmail.common.emailprovider.EmailProviderRepository;
+import com.broadcastmail.common.suppressions.Suppression;
+import com.broadcastmail.common.suppressions.SuppressionsRepository;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.common.exceptions.CampaignNotFoundException;
 import com.broadcastmail.worker.common.exceptions.EmailProviderNotFoundException;
@@ -40,6 +42,7 @@ class EmailSendServiceTest {
     @Mock private ResendClient resendClient;
     @Mock private ResendUsageService resendUsageService;
     @Mock private UnsubscribeTokenService unsubscribeTokenService;
+    @Mock private SuppressionsRepository suppressionsRepository;
 
     private EmailSendService emailSendService;
     private Campaign campaign;
@@ -58,7 +61,8 @@ class EmailSendServiceTest {
                 resendClient,
                 resendUsageService,
                 encryptionProperties,
-                unsubscribeTokenService
+                unsubscribeTokenService,
+                suppressionsRepository
         );
 
         campaign = Campaign.builder()
@@ -84,12 +88,36 @@ class EmailSendServiceTest {
                 .build();
     }
 
-    private void stubHappyPath() {
+    private void stubCampaignAndProvider() {
         when(campaignRepository.findById(campaign.getId())).thenReturn(Optional.of(campaign));
         when(emailProviderRepository.findByAccountId(campaign.getAccountId())).thenReturn(Optional.of(emailProvider));
+    }
+
+    private void stubHappyPath() {
+        stubCampaignAndProvider();
+        when(suppressionsRepository.findByAccountIdAndEmailIn(any(), any())).thenReturn(List.of());
         when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId())).thenReturn(TEST_UNSUBSCRIBE_URL);
         when(resendClient.sendEmailBatch(anyString(), any()))
                 .thenReturn(new CreateBatchEmailsResponse(List.of(new BatchEmail("msg-123")), List.of()));
+    }
+
+    private Suppression suppressionFor(String email) {
+        return Suppression.builder()
+                .accountId(campaign.getAccountId())
+                .email(email)
+                .reason("BOUNCE")
+                .build();
+    }
+
+    private CampaignRecipient recipientWithEmail(String email) {
+        return CampaignRecipient.builder()
+                .id(UUID.randomUUID())
+                .campaignId(campaign.getId())
+                .externalUserId("ext-" + email)
+                .email(email)
+                .idempotencyKey("key-" + email)
+                .status(RecipientStatus.QUEUED)
+                .build();
     }
 
     @Test
@@ -137,6 +165,44 @@ class EmailSendServiceTest {
         assertThat(outcomes).hasSize(1);
         assertThat(outcomes.get(0).messageId()).isEqualTo("msg-123");
         assertThat(outcomes.get(0).succeeded()).isTrue();
+    }
+
+    @Test
+    void shouldReturnSuppressedOutcomeAndSkipSendForSuppressedRecipient() {
+        // Given
+        stubCampaignAndProvider();
+        when(suppressionsRepository.findByAccountIdAndEmailIn(any(), any()))
+                .thenReturn(List.of(suppressionFor(recipient.getEmail())));
+
+        // When
+        List<BatchSendOutcome> outcomes = emailSendService.sendEmailBatch(List.of(recipient), Map.of());
+
+        // Then
+        assertThat(outcomes).hasSize(1);
+        assertThat(outcomes.getFirst().suppressed()).isTrue();
+        assertThat(outcomes.getFirst().succeeded()).isFalse();
+        org.mockito.Mockito.verifyNoInteractions(resendClient);
+    }
+
+    @Test
+    void shouldOnlySendToNonSuppressedRecipientsInMixedBatch() {
+        // Given
+        CampaignRecipient suppressedRecipient = recipientWithEmail("suppressed@example.com");
+        stubCampaignAndProvider();
+        when(suppressionsRepository.findByAccountIdAndEmailIn(any(), any()))
+                .thenReturn(List.of(suppressionFor("suppressed@example.com")));
+        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId())).thenReturn(TEST_UNSUBSCRIBE_URL);
+        when(resendClient.sendEmailBatch(anyString(), any()))
+                .thenReturn(new CreateBatchEmailsResponse(List.of(new BatchEmail("msg-123")), List.of()));
+
+        // When
+        List<BatchSendOutcome> outcomes = emailSendService.sendEmailBatch(
+                List.of(recipient, suppressedRecipient), Map.of());
+
+        // Then
+        assertThat(outcomes).hasSize(2);
+        assertThat(outcomes.get(0).succeeded()).isTrue();
+        assertThat(outcomes.get(1).suppressed()).isTrue();
     }
 
     @Test
