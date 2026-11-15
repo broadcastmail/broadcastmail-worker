@@ -13,8 +13,10 @@ import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
+import com.broadcastmail.common.account.plan.PlanLimitExceededException;
 import com.broadcastmail.worker.common.SecurityUtil;
-import com.broadcastmail.worker.common.exceptions.PlanLimitExceededException;
+import com.broadcastmail.worker.common.exceptions.SupabaseConnectionException;
+import com.broadcastmail.worker.outbox.CampaignStatusNotifier;
 import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import lombok.RequiredArgsConstructor;
@@ -43,6 +45,7 @@ public class ResolutionService {
     private final EncryptionProperties encryptionProperties;
     private final AccountRepository accountRepository;
     private final CampaignRecipientRepository campaignRecipientRepository;
+    private final CampaignStatusNotifier statusNotifier;
 
     public void resolve(Campaign campaign) {
         try {
@@ -67,13 +70,20 @@ public class ResolutionService {
             campaign.setStatus(CampaignStatus.SENDING);
             campaign.setRecipientCount(totalResolved);
             campaignRepository.save(campaign);
+            statusNotifier.notify(campaign.getId(), campaign.getAccountId());
 
         } catch (PlanLimitExceededException _) {
             failCampaign(campaign, "Recipient limit reached for your plan.");
+            statusNotifier.notify(campaign.getId(), campaign.getAccountId());
             log.warn("Plan limit exceeded for campaign {}", campaign.getId());
+        } catch (SupabaseConnectionException e) {
+            failCampaign(campaign, "Could not connect to your database: " + e.getMessage());
+            statusNotifier.notify(campaign.getId(), campaign.getAccountId());
+            log.warn("Supabase unreachable for campaign {}: {}", campaign.getId(), e.getMessage());
         } catch (Exception e) {
             failCampaign(campaign, "Resolution failed: " + e.getMessage());
-            log.error("Resolution failed for campaign {}", campaign.getId(), e);
+            statusNotifier.notify(campaign.getId(), campaign.getAccountId());
+            log.warn("Resolution failed for campaign {}: {}", campaign.getId(), e.getMessage());
         }
     }
 

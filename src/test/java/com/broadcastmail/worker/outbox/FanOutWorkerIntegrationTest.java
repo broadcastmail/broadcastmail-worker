@@ -5,6 +5,7 @@ import com.broadcastmail.common.account.Account;
 import com.broadcastmail.common.account.AccountRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
+import com.broadcastmail.worker.IntegrationTest;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
@@ -44,7 +45,7 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @Import(TestContainersConfiguration.class)
-class FanOutWorkerIntegrationTest {
+class FanOutWorkerIntegrationTest extends IntegrationTest {
 
     @Autowired
     private FanOutWorker fanOutWorker;
@@ -101,6 +102,7 @@ class FanOutWorkerIntegrationTest {
                 .name("Test Campaign")
                 .subject("Hello")
                 .bodyHtml("<p>Hi</p>")
+                .filterRootLogic("AND")
                 .status(CampaignStatus.SENDING)
                 .build());
 

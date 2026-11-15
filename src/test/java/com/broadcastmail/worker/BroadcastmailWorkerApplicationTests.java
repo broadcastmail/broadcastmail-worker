@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Import;
 
 @SpringBootTest
 @Import(TestContainersConfiguration.class)
-class BroadcastmailWorkerApplicationTests {
+class BroadcastmailWorkerApplicationTests extends IntegrationTest {
 
     @Test
     void contextLoads() {

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import java.sql.Connection;
 import java.util.UUID;
 
 @Component
@@ -14,6 +15,12 @@ public class CampaignStatusNotifier {
 
     public void notify(UUID campaignId, UUID accountId) {
         String payload = "{\"campaignId\":\"" + campaignId + "\",\"accountId\":\"" + accountId + "\"}";
-        jdbcTemplate.queryForObject("SELECT pg_notify('campaign_status', ?)", Void.class, payload);
+        jdbcTemplate.execute((Connection con) -> {
+            try (var ps = con.prepareStatement("SELECT pg_notify('campaign_status', ?)")) {
+                ps.setString(1, payload);
+                ps.execute();
+                return null;
+            }
+        });
     }
 }

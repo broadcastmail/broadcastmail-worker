@@ -16,6 +16,7 @@ package com.broadcastmail.worker.resolution;
 
 import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.connection.Connection;
+import com.broadcastmail.worker.IntegrationTest;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import org.assertj.core.api.AssertionsForClassTypes;
@@ -27,14 +28,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 
+import java.net.Socket;
 import java.util.List;
 
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @SpringBootTest
 @Import(TestContainersConfiguration.class)
 @Tag("local")
-class ExternalRecipientQueryServiceTest {
+class ExternalRecipientQueryServiceTest extends IntegrationTest {
 
     @Autowired
     private ExternalRecipientQueryService service;
@@ -46,13 +49,22 @@ class ExternalRecipientQueryServiceTest {
 
     @BeforeEach
     void setUp() {
+        assumeTrue(isSupabaseReachable(), "Local Supabase not running — skipping");
         connection = Connection.builder()
-                .projectRef("127.0.0.1:54322") // local Supabase port
+                .projectRef("127.0.0.1:54322")
                 .userIdColumn("id")
                 .emailColumn("email")
                 .userTableName("profiles")
                 .userTableSchema("public")
                 .build();
+    }
+
+    private boolean isSupabaseReachable() {
+        try (Socket s = new Socket("127.0.0.1", 54322)) {
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     @Test

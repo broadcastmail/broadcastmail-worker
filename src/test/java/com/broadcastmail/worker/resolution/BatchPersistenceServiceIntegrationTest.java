@@ -8,6 +8,7 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
+import com.broadcastmail.worker.IntegrationTest;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
@@ -30,7 +31,7 @@ import static org.mockito.Mockito.doThrow;
 
 @SpringBootTest
 @Import(TestContainersConfiguration.class)
-class BatchPersistenceServiceIntegrationTest {
+class BatchPersistenceServiceIntegrationTest extends IntegrationTest {
 
     @Autowired private BatchPersistenceService batchPersistenceService;
     @Autowired private CampaignRepository campaignRepository;

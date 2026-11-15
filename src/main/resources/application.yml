@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    url: jdbc:postgresql://${PGBOUNCER_HOST:${PGHOST}}:${PGBOUNCER_PORT:${PGPORT}}/${PGDATABASE}
     username: ${PGUSER}
     password: ${PGPASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -18,6 +18,15 @@ spring:
       fail-on-unknown-properties: false
 
 app:
+  datasource:
+    direct:
+      url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+      username: ${PGUSER}
+      password: ${PGPASSWORD}
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 2
+        pool-name: direct-pool
   encryption:
     key: ${ENCRYPTION_KEY}
   frontend:

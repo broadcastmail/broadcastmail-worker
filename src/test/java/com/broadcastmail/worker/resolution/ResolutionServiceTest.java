@@ -13,6 +13,7 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
 import com.broadcastmail.worker.common.SecurityUtil;
+import com.broadcastmail.worker.common.exceptions.SupabaseConnectionException;
 import com.broadcastmail.worker.config.EncryptionProperties;
 import com.broadcastmail.worker.outbox.CampaignStatusNotifier;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
@@ -165,7 +166,7 @@ class ResolutionServiceTest {
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
         when(externalRecipientQueryService.resolve(any(), any(), any(), anyInt(), anyInt()))
-                .thenThrow(new RuntimeException("Supabase unreachable"));
+                .thenThrow(new SupabaseConnectionException("Supabase unreachable", null));
 
         // When
         resolutionService.resolve(campaign);
