@@ -29,6 +29,7 @@ class CampaignCompletionServiceTest {
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
     @Mock private EmailSendService emailSendService;
     @Mock private TemplateAttributeService templateAttributeService;
+    @Mock private CampaignStatusNotifier statusNotifier;
 
     @InjectMocks private CampaignCompletionService campaignCompletionService;
 

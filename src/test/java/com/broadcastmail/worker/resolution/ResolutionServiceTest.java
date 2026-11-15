@@ -14,6 +14,7 @@ import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
 import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.config.EncryptionProperties;
+import com.broadcastmail.worker.outbox.CampaignStatusNotifier;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -44,6 +45,7 @@ class ResolutionServiceTest {
     @Mock private EncryptionProperties encryptionProperties;
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
     @Mock private AccountRepository accountRepository;
+    @Mock private CampaignStatusNotifier statusNotifier;
     @InjectMocks private ResolutionService resolutionService;
     private Campaign resolvingCampaign() {
         return Campaign.builder()
