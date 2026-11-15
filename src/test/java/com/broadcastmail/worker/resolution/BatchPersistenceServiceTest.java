@@ -3,6 +3,7 @@ package com.broadcastmail.worker.resolution;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.outbox.OutboxEntry;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
+import org.springframework.jdbc.core.JdbcTemplate;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ class BatchPersistenceServiceTest {
 
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
     @Mock private OutboxEntryRepository outboxEntryRepository;
+    @Mock private JdbcTemplate jdbcTemplate;
 
     @InjectMocks private BatchPersistenceService batchPersistenceService;
 

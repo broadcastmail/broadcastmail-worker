@@ -4,6 +4,7 @@ import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.campaign.filter.FilterSource;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.filterablecolumn.FilterableColumn;
+import com.broadcastmail.worker.common.exceptions.SupabaseConnectionException;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import org.springframework.stereotype.Service;
 
@@ -51,7 +52,7 @@ public class ExternalRecipientQueryService {
                 return mapRows(rs);
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to resolve recipients: " + e.getMessage(), e);
+            throw new SupabaseConnectionException("Failed to resolve recipients: " + e.getMessage(), e);
         }
     }
 
@@ -68,7 +69,7 @@ public class ExternalRecipientQueryService {
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to resolve recipients by IDs: " + e.getMessage(), e);
+            throw new SupabaseConnectionException("Failed to resolve recipients by IDs: " + e.getMessage(), e);
         }
     }
 
@@ -118,7 +119,7 @@ public class ExternalRecipientQueryService {
                 }
             }
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch template attributes: " + e.getMessage(), e);
+            throw new SupabaseConnectionException("Failed to fetch template attributes: " + e.getMessage(), e);
         }
 
         return result;

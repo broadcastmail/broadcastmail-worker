@@ -9,6 +9,7 @@ import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ConnectionRepository;
+import com.broadcastmail.worker.IntegrationTest;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.AfterEach;
@@ -25,7 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @Import(TestContainersConfiguration.class)
-class RetentionCleanupJobIntegrationTest {
+class RetentionCleanupJobIntegrationTest extends IntegrationTest {
 
     @Autowired private RetentionCleanupJob retentionCleanupJob;
     @Autowired private CampaignRepository campaignRepository;
@@ -71,7 +72,7 @@ class RetentionCleanupJobIntegrationTest {
     @Test
     void shouldDeleteProCampaignsOlderThan90Days() {
         // Given
-        account.setPlan(Plan.PRO);
+        account.setPlan(Plan.STARTER);
         accountRepository.save(account);
 
         Campaign old = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())

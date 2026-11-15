@@ -21,6 +21,7 @@ public class CampaignCompletionService {
     private final CampaignRecipientRepository campaignRecipientRepository;
     private final EmailSendService emailSendService;
     private final TemplateAttributeService templateAttributeService;
+    private final CampaignStatusNotifier statusNotifier;
 
     public void checkAndComplete(UUID campaignId) {
         RecipientStatusCounts counts = campaignRecipientRepository.countStatusesByCampaignId(campaignId);
@@ -43,6 +44,7 @@ public class CampaignCompletionService {
         campaign.setSentAt(OffsetDateTime.now(ZoneId.systemDefault()));
         campaign.setFailureReason(null);
         campaignRepository.save(campaign);
+        statusNotifier.notify(campaignId, campaign.getAccountId());
 
         emailSendService.evictCampaign(campaignId);
         templateAttributeService.invalidate(campaignId);

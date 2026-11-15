@@ -10,8 +10,9 @@ import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
 import com.broadcastmail.worker.resolution.TemplateAttributeService;
-import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
@@ -21,11 +22,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class OutboxProcessor {
+    private static final Logger log = LoggerFactory.getLogger(OutboxProcessor.class);
     private final EmailSendService emailSendService;
     private final OutboxEntryRepository outboxEntryRepository;
     private final CampaignRecipientRepository campaignRecipientRepository;
@@ -36,16 +40,24 @@ public class OutboxProcessor {
     private static final int RESEND_BATCH_MAX = 100;
     private static final int MAX_CAMPAIGN_DAYS = 500;
 
-    @Transactional
     public void processAll(List<OutboxEntry> entries) {
         List<UUID> recipientIds = entries.stream().map(OutboxEntry::getCampaignRecipientId).toList();
         Map<UUID, CampaignRecipient> recipientMap = campaignRecipientRepository
                 .findAllById(recipientIds).stream()
                 .collect(Collectors.toMap(CampaignRecipient::getId, r -> r));
-        entries.stream()
+        var grouped = entries.stream()
                 .filter(e -> recipientMap.containsKey(e.getCampaignRecipientId()))
-                .collect(Collectors.groupingBy(e -> recipientMap.get(e.getCampaignRecipientId()).getCampaignId()))
-                .forEach((campaignId, batch) -> processCampaignBatch(batch, recipientMap));
+                .collect(Collectors.groupingBy(e -> recipientMap.get(e.getCampaignRecipientId()).getCampaignId()));
+        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            grouped.forEach((campaignId, batch) ->
+                    executor.submit(() -> {
+                        try {
+                            processCampaignBatch(batch, recipientMap);
+                        } catch (Exception e) {
+                            log.error("processCampaignBatch failed for campaign {}", campaignId, e);
+                        }
+                    }));
+        }
     }
 
     void processCampaignBatch(List<OutboxEntry> entries, Map<UUID, CampaignRecipient> recipientMap) {

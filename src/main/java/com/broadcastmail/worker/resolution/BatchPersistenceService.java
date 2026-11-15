@@ -6,6 +6,7 @@ import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ public class BatchPersistenceService {
 
     private final CampaignRecipientRepository campaignRecipientRepository;
     private final OutboxEntryRepository outboxEntryRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     @Transactional
     public void persistBatch(UUID campaignId, List<RecipientRow> batch) {
@@ -47,5 +49,6 @@ public class BatchPersistenceService {
                 .toList();
 
         outboxEntryRepository.saveAll(outboxEntries);
+        jdbcTemplate.execute("SELECT pg_notify('outbox_ready', '')");
     }
 }

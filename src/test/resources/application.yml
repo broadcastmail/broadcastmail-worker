@@ -1,8 +1,5 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${PGHOST:localhost}:${PGPORT:5432}/${PGDATABASE:test}
-    username: ${PGUSER:postgres}
-    password: ${PGPASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -12,6 +9,12 @@ spring:
     locations: classpath:db/migration
 
 app:
+  datasource:
+    direct:
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 2
+        pool-name: direct-pool
   encryption:
     key: 01234567890123456789012345678901
   frontend:
