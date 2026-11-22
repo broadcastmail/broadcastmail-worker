@@ -137,7 +137,7 @@ public class ExternalRecipientQueryService {
         try {
             return connection.readerConnectionFactory().open(rolePassword, LOGIN_TIMEOUT_SECONDS);
         } catch (IllegalStateException e) {
-            // Legacy connection whose pooler prefix the API hasn't backfilled yet.
+            // Connection saved without a pooler prefix — can't reach the project through Supavisor.
             throw new SupabaseConnectionException(e.getMessage(), e);
         }
     }
