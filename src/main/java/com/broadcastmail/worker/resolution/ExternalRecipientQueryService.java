@@ -9,7 +9,6 @@ import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import org.springframework.stereotype.Service;
 
 import java.sql.Array;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -23,17 +22,18 @@ import java.util.stream.Collectors;
 @Service
 public class ExternalRecipientQueryService {
 
+    private static final int LOGIN_TIMEOUT_SECONDS = 5;
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("[a-zA-Z_]\\w*");
     private static final String SELECT_CLAUSE = "SELECT u.\"id\", u.\"email\"";
-    private static final String SELECT_BY_IDS_SQL = "SELECT u.\"id\", u.\"email\" FROM auth.user_emails u WHERE u.id = ANY(?)";
+    private static final String SELECT_BY_IDS_SQL = "SELECT u.\"id\", u.\"email\" FROM _broadcastmail.user_emails u WHERE u.id = ANY(?)";
 
     public List<RecipientRow> resolve(Connection connection, String rolePassword,
                                       FilterQuery filterQuery, int offset, int batchSize) {
         validateColumnName(connection.getUserIdColumn());
 
         String base = filterQuery.sql().isBlank()
-                ? SELECT_CLAUSE + " FROM auth.user_emails u"
-                : SELECT_CLAUSE + " FROM auth.user_emails u"
+                ? SELECT_CLAUSE + " FROM _broadcastmail.user_emails u"
+                : SELECT_CLAUSE + " FROM _broadcastmail.user_emails u"
                     + " JOIN " + connection.getUserTableSchema() + "." + connection.getUserTableName() //NOSONAR — schema/table come from trusted Connection entity
                     + " p ON p.\"" + connection.getUserIdColumn() + "\" = u.id";
 
@@ -134,8 +134,12 @@ public class ExternalRecipientQueryService {
     }
 
     private java.sql.Connection openConnection(Connection connection, String rolePassword) throws SQLException {
-        String jdbcUrl = "jdbc:postgresql://db." + connection.getProjectRef() + ".supabase.co:6543/postgres?prepareThreshold=0";
-        return DriverManager.getConnection(jdbcUrl, "broadcastmail_reader", rolePassword);
+        try {
+            return connection.readerConnectionFactory().open(rolePassword, LOGIN_TIMEOUT_SECONDS);
+        } catch (IllegalStateException e) {
+            // Legacy connection whose pooler prefix the API hasn't backfilled yet.
+            throw new SupabaseConnectionException(e.getMessage(), e);
+        }
     }
 
     private void validateColumnName(String name) {
