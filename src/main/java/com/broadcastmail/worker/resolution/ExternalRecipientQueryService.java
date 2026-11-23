@@ -3,6 +3,7 @@ package com.broadcastmail.worker.resolution;
 import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.campaign.filter.FilterSource;
 import com.broadcastmail.common.connection.Connection;
+import com.broadcastmail.common.connection.RecipientSource;
 import com.broadcastmail.common.filterablecolumn.FilterableColumn;
 import com.broadcastmail.worker.common.exceptions.SupabaseConnectionException;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
@@ -24,21 +25,16 @@ public class ExternalRecipientQueryService {
 
     private static final int LOGIN_TIMEOUT_SECONDS = 5;
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("[a-zA-Z_]\\w*");
-    private static final String SELECT_CLAUSE = "SELECT u.\"id\", u.\"email\"";
-    private static final String SELECT_BY_IDS_SQL = "SELECT u.\"id\", u.\"email\" FROM _broadcastmail.user_emails u WHERE u.id = ANY(?)";
 
     public List<RecipientRow> resolve(Connection connection, String rolePassword,
                                       FilterQuery filterQuery, int offset, int batchSize) {
-        validateColumnName(connection.getUserIdColumn());
-
-        String base = filterQuery.sql().isBlank()
-                ? SELECT_CLAUSE + " FROM _broadcastmail.user_emails u"
-                : SELECT_CLAUSE + " FROM _broadcastmail.user_emails u"
-                    + " JOIN " + connection.getUserTableSchema() + "." + connection.getUserTableName() //NOSONAR — schema/table come from trusted Connection entity
-                    + " p ON p.\"" + connection.getUserIdColumn() + "\" = u.id";
-
-        String sql = (filterQuery.sql().isBlank() ? base : base + " " + filterQuery.sql()) //NOSONAR — filterQuery.sql() is produced by CampaignFilterSerializer, not user input
-                + " LIMIT " + batchSize + " OFFSET " + offset;
+        RecipientSource source = RecipientSource.of(connection);
+        boolean hasFilters = !filterQuery.sql().isBlank();
+        String where = hasFilters
+                ? filterQuery.sql() + " AND " + source.emailExpr() + " IS NOT NULL"
+                : "WHERE " + source.emailExpr() + " IS NOT NULL";
+        String sql = selectClause(source) + " FROM " + source.from(hasFilters) + " " + where //NOSONAR — built from RecipientSource (validated identifiers) and CampaignFilterSerializer
+                + " ORDER BY " + source.idExpr() + " LIMIT " + batchSize + " OFFSET " + offset;
 
         // TODO: CWE-316 — accept char[] and zero out after DriverManager.getConnection()
         try (java.sql.Connection conn = openConnection(connection, rolePassword);
@@ -62,7 +58,10 @@ public class ExternalRecipientQueryService {
 
         try (java.sql.Connection conn = openConnection(connection, rolePassword)) {
             Array sqlArray = conn.createArrayOf("text", externalUserIds.toArray(new String[0]));
-            try (PreparedStatement stmt = conn.prepareStatement(SELECT_BY_IDS_SQL)) {
+            RecipientSource source = RecipientSource.of(connection);
+            String sql = selectClause(source) + " FROM " + source.from(false) //NOSONAR — validated identifiers
+                    + " WHERE " + source.idExpr() + "::text = ANY(?) AND " + source.emailExpr() + " IS NOT NULL";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                 stmt.setArray(1, sqlArray);
                 try (ResultSet rs = stmt.executeQuery()) {
                     return mapRows(rs);
@@ -123,6 +122,10 @@ public class ExternalRecipientQueryService {
         }
 
         return result;
+    }
+
+    private static String selectClause(RecipientSource source) {
+        return "SELECT " + source.idExpr() + "::text AS \"id\", " + source.emailExpr() + " AS \"email\"";
     }
 
     private List<RecipientRow> mapRows(ResultSet rs) throws SQLException {

@@ -82,7 +82,7 @@ class ResolutionServiceTest {
         when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
-        when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
+        when(filterSerializer.serialize(any(), anyString(), any())).thenReturn(new FilterQuery("", List.of()));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
                 .thenReturn(CampaignTestFixtures.recipientRows(2));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(100), anyInt()))
@@ -105,7 +105,7 @@ class ResolutionServiceTest {
         when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account()));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
-        when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
+        when(filterSerializer.serialize(any(), anyString(), any())).thenReturn(new FilterQuery("", List.of()));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
                 .thenReturn(CampaignTestFixtures.recipientRows(100));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(100), anyInt()))
@@ -188,7 +188,7 @@ class ResolutionServiceTest {
         when(accountRepository.findById(ACCOUNT_ID)).thenReturn(Optional.of(account));
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
-        when(filterSerializer.serialize(any())).thenReturn(new FilterQuery("", List.of()));
+        when(filterSerializer.serialize(any(), anyString(), any())).thenReturn(new FilterQuery("", List.of()));
         when(campaignRecipientRepository.countUniqueRecipientsSince(eq(ACCOUNT_ID), any()))
                 .thenReturn(0L);
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
