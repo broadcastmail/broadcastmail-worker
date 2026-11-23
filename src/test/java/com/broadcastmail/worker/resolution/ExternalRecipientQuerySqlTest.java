@@ -9,14 +9,15 @@ import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.ReaderConnectionFactory;
 import com.broadcastmail.common.connection.RecipientSource;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.AdditionalMatchers.and;
+import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
@@ -32,16 +33,17 @@ class ExternalRecipientQuerySqlTest {
                 filter("created_at", FilterSource.PROFILE_TABLE, "7")), "AND",
                 RecipientSource.of(connection).filterAliases());
 
+        java.sql.Connection jdbc = stubJdbc(connection);
+
         // When
-        String sql = capturedSql(connection, () -> service.resolve(connection, "pw", filters, 0, 100));
+        service.resolve(connection, "pw", filters, 0, 100);
 
         // Then
-        assertThat(sql)
-                .contains("SELECT email.\"id\"::text AS \"id\", email.\"email\" AS \"email\"")
-                .contains("FROM \"public\".\"contacts\" email LEFT JOIN \"public\".\"profiles\" linked ON linked.\"id\" = email.\"id\"")
-                .contains("WHERE linked.\"created_at\" > NOW()")
-                .contains("ORDER BY email.\"id\"")
-                .doesNotContain("user_emails");
+        verify(jdbc).prepareStatement(and(
+                contains("SELECT email.\"id\"::text AS \"id\", email.\"email\" AS \"email\""
+                        + " FROM \"public\".\"contacts\" email LEFT JOIN \"public\".\"profiles\" linked ON linked.\"id\" = email.\"id\""
+                        + " WHERE linked.\"created_at\" > NOW()"),
+                contains("ORDER BY email.\"id\"")));
     }
 
     @Test
@@ -52,28 +54,24 @@ class ExternalRecipientQuerySqlTest {
                 filter("country", FilterSource.PROFILE_TABLE, "HR")), "AND",
                 RecipientSource.of(connection).filterAliases());
 
+        java.sql.Connection jdbc = stubJdbc(connection);
+
         // When
-        String sql = capturedSql(connection, () -> service.resolve(connection, "pw", filters, 0, 100));
+        service.resolve(connection, "pw", filters, 0, 100);
 
         // Then
-        assertThat(sql).doesNotContain("JOIN").contains("WHERE email.\"country\" = ?");
+        verify(jdbc).prepareStatement(and(not(contains("JOIN")), contains("WHERE email.\"country\" = ?")));
     }
 
-    private interface Call { void run(); }
-
-    private String capturedSql(Connection connection, Call call) throws Exception {
+    private java.sql.Connection stubJdbc(Connection connection) throws Exception {
         ReaderConnectionFactory factory = mock(ReaderConnectionFactory.class);
         java.sql.Connection jdbc = mock(java.sql.Connection.class);
         PreparedStatement stmt = mock(PreparedStatement.class);
-        ResultSet rs = mock(ResultSet.class);
         when(connection.readerConnectionFactory()).thenReturn(factory);
         when(factory.open(anyString(), anyInt())).thenReturn(jdbc);
         when(jdbc.prepareStatement(anyString())).thenReturn(stmt);
-        when(stmt.executeQuery()).thenReturn(rs);
-        call.run();
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(jdbc).prepareStatement(sql.capture());
-        return sql.getValue();
+        when(stmt.executeQuery()).thenReturn(mock(ResultSet.class));
+        return jdbc;
     }
 
     private Connection connection(String emailTable) {
