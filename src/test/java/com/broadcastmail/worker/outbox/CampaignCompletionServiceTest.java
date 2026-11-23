@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -65,8 +66,7 @@ class CampaignCompletionServiceTest {
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
 
         // Then
-        Campaign saved = capturesSaved();
-        assertThat(saved.getStatus()).isEqualTo(CampaignStatus.SENT);
+        verify(campaignRepository).save(argThat(c -> c.getStatus() == CampaignStatus.SENT));
     }
 
     @Test
@@ -82,8 +82,7 @@ class CampaignCompletionServiceTest {
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
 
         // Then
-        Campaign saved = capturesSaved();
-        assertThat(saved.getFailureReason()).isNull();
+        verify(campaignRepository).save(argThat(c -> c.getFailureReason() == null));
     }
 
     @Test
@@ -98,9 +97,8 @@ class CampaignCompletionServiceTest {
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
 
         // Then
-        Campaign saved = capturesSaved();
-        assertThat(saved.getStatus()).isEqualTo(CampaignStatus.FAILED);
-        assertThat(saved.getFailedCount()).isEqualTo(5);
+        verify(campaignRepository).save(argThat(c ->
+                c.getStatus() == CampaignStatus.FAILED && Objects.equals(c.getFailedCount(), 5)));
     }
 
     @Test
@@ -115,9 +113,8 @@ class CampaignCompletionServiceTest {
         campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
 
         // Then
-        Campaign saved = capturesSaved();
-        assertThat(saved.getStatus()).isEqualTo(CampaignStatus.PARTIALLY_FAILED);
-        assertThat(saved.getFailedCount()).isEqualTo(2);
+        verify(campaignRepository).save(argThat(c ->
+                c.getStatus() == CampaignStatus.PARTIALLY_FAILED && Objects.equals(c.getFailedCount(), 2)));
     }
 
     @Test
@@ -146,12 +143,6 @@ class CampaignCompletionServiceTest {
         // When / Then
         assertThatThrownBy(() -> campaignCompletionService.checkAndComplete(CAMPAIGN_ID))
                 .isInstanceOf(CampaignNotFoundException.class);
-    }
-
-    private Campaign capturesSaved() {
-        var captor = org.mockito.ArgumentCaptor.forClass(Campaign.class);
-        verify(campaignRepository).save(captor.capture());
-        return captor.getValue();
     }
 
     private RecipientStatusCounts counts(long queued, long failed, long total) {
