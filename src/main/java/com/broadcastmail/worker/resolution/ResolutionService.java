@@ -12,6 +12,7 @@ import com.broadcastmail.common.campaign.filter.CampaignFilterSerializer;
 import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.connection.Connection;
+import com.broadcastmail.common.connection.RecipientSource;
 import com.broadcastmail.common.connection.ConnectionRepository;
 import com.broadcastmail.common.account.plan.PlanLimitExceededException;
 import com.broadcastmail.worker.common.SecurityUtil;
@@ -90,7 +91,8 @@ public class ResolutionService {
     private int resolveByFilters(Campaign campaign, Connection connection, String rolePassword,
                                   Account account, int historicalCount) {
         List<CampaignFilter> filters = filterRepository.findByCampaignId(campaign.getId());
-        FilterQuery filterQuery = filterSerializer.serialize(filters);
+        String rootLogic = "OR".equalsIgnoreCase(campaign.getFilterRootLogic()) ? "OR" : "AND";
+        FilterQuery filterQuery = filterSerializer.serialize(filters, rootLogic, RecipientSource.of(connection).filterAliases());
         int totalResolved = 0;
         int offset = 0;
         List<RecipientRow> batch = fetchBatch(connection, rolePassword, filterQuery, offset);
