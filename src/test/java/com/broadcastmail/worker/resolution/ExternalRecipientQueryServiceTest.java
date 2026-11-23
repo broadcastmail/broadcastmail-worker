@@ -5,10 +5,10 @@
  *   2. Run setup SQL in Studio (http://127.0.0.1:54323):
  *      - CREATE ROLE broadcastmail_reader NOINHERIT LOGIN PASSWORD 'testpassword123';
  *      - GRANT USAGE ON SCHEMA public TO broadcastmail_reader;
- *      - GRANT USAGE ON SCHEMA auth TO broadcastmail_reader;
+ *      - GRANT USAGE ON SCHEMA _broadcastmail TO broadcastmail_reader;
  *      - GRANT SELECT ON ALL TABLES IN SCHEMA public TO broadcastmail_reader;
- *      - CREATE VIEW auth.user_emails AS SELECT id, email FROM auth.users;
- *      - GRANT SELECT ON auth.user_emails TO broadcastmail_reader;
+ *      - CREATE SCHEMA _broadcastmail; CREATE VIEW _broadcastmail.user_emails AS SELECT id, email FROM auth.users;
+ *      - GRANT SELECT ON _broadcastmail.user_emails TO broadcastmail_reader;
  *      - INSERT 3 test users into auth.users and public.profiles (2 free, 1 pro)
  */
 
