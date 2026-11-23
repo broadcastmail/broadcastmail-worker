@@ -57,16 +57,14 @@ public class ResolutionService {
                     .orElseThrow(() -> new RuntimeException("Account not found: " + campaign.getAccountId()));
 
             String rolePassword = SecurityUtil.decrypt(connection.getEncryptedCreds(), encryptionProperties.key());
-            int historicalCount = (int) campaignRecipientRepository.countUniqueRecipientsSince(
-                    account.getId(), OffsetDateTime.now(ZoneId.systemDefault()).minusDays(30));
+            // Addresses emailed this period already used up quota; only new ones count against the plan limit.
+            Set<String> usedThisPeriod = new HashSet<>(campaignRecipientRepository.findDistinctEmailsSince(
+                    account.getId(), OffsetDateTime.now(ZoneId.systemDefault()).minusDays(30)));
 
-            // Backward-compat: null audienceMode with filters → treat as FILTER.
-            AudienceMode mode = campaign.getAudienceMode();
-            if (mode == null) mode = AudienceMode.FILTER;
-
-            int totalResolved = mode == AudienceMode.FILTER
-                    ? resolveByFilters(campaign, connection, rolePassword, account, historicalCount)
-                    : resolveByExplicitIds(campaign, connection, rolePassword, account, historicalCount, mode);
+            Exclusions exclusions = exclusions(campaign);
+            int totalResolved = campaign.getAudienceMode() == AudienceMode.MANUAL
+                    ? resolveIncluded(campaign, connection, rolePassword, account, usedThisPeriod, exclusions)
+                    : resolveByFilters(campaign, connection, rolePassword, account, usedThisPeriod, exclusions);
 
             campaign.setStatus(CampaignStatus.SENDING);
             campaign.setRecipientCount(totalResolved);
@@ -88,63 +86,60 @@ public class ResolutionService {
         }
     }
 
+    // Unticked rows and the excluded campaign's past recipients; the API's recipient count applies the same rules.
+    private record Exclusions(Set<String> ids, Set<String> emails) {
+        boolean keeps(RecipientRow row) {
+            return !ids.contains(row.userId()) && !emails.contains(row.email());
+        }
+    }
+
+    private Exclusions exclusions(Campaign campaign) {
+        Set<String> ids = campaign.getExcludedIds() != null ? new HashSet<>(campaign.getExcludedIds()) : Set.of();
+        Set<String> emails = campaign.getExcludedCampaignId() != null
+                ? new HashSet<>(campaignRecipientRepository.findDistinctEmailsByCampaignId(campaign.getExcludedCampaignId()))
+                : Set.of();
+        return new Exclusions(ids, emails);
+    }
+
+    // "all" and the legacy "filter" mode both mean: everyone matching the saved filters.
     private int resolveByFilters(Campaign campaign, Connection connection, String rolePassword,
-                                  Account account, int historicalCount) {
+                                  Account account, Set<String> usedThisPeriod, Exclusions exclusions) {
         List<CampaignFilter> filters = filterRepository.findByCampaignId(campaign.getId());
         String rootLogic = "OR".equalsIgnoreCase(campaign.getFilterRootLogic()) ? "OR" : "AND";
         FilterQuery filterQuery = filterSerializer.serialize(filters, rootLogic, RecipientSource.of(connection).filterAliases());
         int totalResolved = 0;
         int offset = 0;
-        List<RecipientRow> batch = fetchBatch(connection, rolePassword, filterQuery, offset);
-        while (!batch.isEmpty()) {
-            batchPersistenceService.persistBatch(campaign.getId(), batch);
-            account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
-            totalResolved += batch.size();
+        List<RecipientRow> rawBatch = fetchBatch(connection, rolePassword, filterQuery, offset);
+        while (!rawBatch.isEmpty()) {
+            List<RecipientRow> batch = rawBatch.stream().filter(exclusions::keeps).toList();
+            totalResolved = persist(campaign, account, usedThisPeriod, totalResolved, batch);
             offset += BATCH_SIZE;
-            batch = fetchBatch(connection, rolePassword, filterQuery, offset);
+            rawBatch = fetchBatch(connection, rolePassword, filterQuery, offset);
         }
         return totalResolved;
     }
 
-    private int resolveByExplicitIds(Campaign campaign, Connection connection, String rolePassword,
-                                      Account account, int historicalCount, AudienceMode mode) {
-        Set<String> excluded = campaign.getExcludedIds() != null
-                ? new HashSet<>(campaign.getExcludedIds()) : Set.of();
-
-        if (mode == AudienceMode.MANUAL) {
-            List<String> included = campaign.getIncludedIds() != null ? campaign.getIncludedIds() : List.of();
-            List<String> effectiveIds = included.stream()
-                    .filter(id -> !excluded.contains(id))
-                    .toList();
-            List<RecipientRow> candidates = externalRecipientQueryService.resolveByIds(connection, rolePassword, effectiveIds);
-            int totalResolved = 0;
-            for (int i = 0; i < candidates.size(); i += BATCH_SIZE) {
-                List<RecipientRow> batch = candidates.subList(i, Math.min(i + BATCH_SIZE, candidates.size()));
-                batchPersistenceService.persistBatch(campaign.getId(), batch);
-                account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
-                totalResolved += batch.size();
-            }
-            return totalResolved;
-        }
-
-        // ALL: cursor-paginated full-table scan, excluding excluded IDs per batch.
-        FilterQuery emptyQuery = filterSerializer.serialize(List.of());
+    private int resolveIncluded(Campaign campaign, Connection connection, String rolePassword,
+                                Account account, Set<String> usedThisPeriod, Exclusions exclusions) {
+        List<String> included = campaign.getIncludedIds() != null ? campaign.getIncludedIds() : List.of();
+        List<RecipientRow> candidates = externalRecipientQueryService.resolveByIds(connection, rolePassword, included)
+                .stream().filter(exclusions::keeps).toList();
         int totalResolved = 0;
-        int offset = 0;
-        List<RecipientRow> rawBatch = fetchBatch(connection, rolePassword, emptyQuery, offset);
-        while (!rawBatch.isEmpty()) {
-            List<RecipientRow> batch = rawBatch.stream()
-                    .filter(r -> !excluded.contains(r.userId()))
-                    .toList();
-            if (!batch.isEmpty()) {
-                batchPersistenceService.persistBatch(campaign.getId(), batch);
-                account.getPlan().strategy().checkRecipientLimit((long) historicalCount + totalResolved, batch.size());
-                totalResolved += batch.size();
-            }
-            offset += BATCH_SIZE;
-            rawBatch = fetchBatch(connection, rolePassword, emptyQuery, offset);
+        for (int i = 0; i < candidates.size(); i += BATCH_SIZE) {
+            totalResolved = persist(campaign, account, usedThisPeriod, totalResolved,
+                    candidates.subList(i, Math.min(i + BATCH_SIZE, candidates.size())));
         }
         return totalResolved;
+    }
+
+    private int persist(Campaign campaign, Account account, Set<String> usedThisPeriod, int totalResolved,
+                        List<RecipientRow> batch) {
+        if (batch.isEmpty()) return totalResolved;
+        batchPersistenceService.persistBatch(campaign.getId(), batch);
+        int used = usedThisPeriod.size();
+        batch.forEach(row -> usedThisPeriod.add(row.email()));
+        account.getPlan().strategy().checkRecipientLimit(used, usedThisPeriod.size() - used);
+        return totalResolved + batch.size();
     }
 
     private List<RecipientRow> fetchBatch(Connection connection, String rolePassword,
