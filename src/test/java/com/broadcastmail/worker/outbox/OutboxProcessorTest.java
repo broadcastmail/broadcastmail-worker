@@ -10,6 +10,7 @@ import com.broadcastmail.common.outbox.OutboxEntry;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
+import com.broadcastmail.worker.common.exceptions.ResendThrottledException;
 import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -124,6 +125,46 @@ class OutboxProcessorTest {
         assertThat(outboxEntry.getAttempts()).isZero();
         assertThat(outboxEntry.getNextAttemptAt().toLocalDate())
                 .isEqualTo(LocalDate.now(ZoneId.systemDefault()).plusDays(1));
+    }
+
+    @Test
+    void shouldRetrySoonWithoutUsingAnAttemptOnPerSecondThrottle() {
+        when(emailSendService.sendEmailBatch(any(), any()))
+                .thenThrow(new ResendThrottledException("Resend per-second rate limit hit"));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outboxEntry.getAttempts()).isZero();
+        assertThat(outboxEntry.getNextAttemptAt())
+                .isBefore(OffsetDateTime.now(ZoneId.systemDefault()).plusMinutes(1));
+        verify(campaignRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldCountAnUnexpectedErrorAsAFailedAttemptInsteadOfLeavingTheRowProcessing() {
+        when(emailSendService.sendEmailBatch(any(), any()))
+                .thenThrow(new IllegalStateException("weak key"));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        assertThat(outboxEntry.getAttempts()).isEqualTo(1);
+        assertThat(outboxEntry.getNextAttemptAt()).isAfter(OffsetDateTime.now(ZoneId.systemDefault()));
+    }
+
+    @Test
+    void shouldFailTheRecipientAndCompleteWhenAnUnexpectedErrorRepeatsOnTheLastAttempt() {
+        outboxEntry = processingEntryWithAttempts(2);
+        when(emailSendService.sendEmailBatch(any(), any()))
+                .thenThrow(new IllegalStateException("weak key"));
+
+        outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
+
+        assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.FAILED);
+        assertThat(recipient.getStatus()).isEqualTo(RecipientStatus.FAILED);
+        assertThat(recipient.getFailedReason()).startsWith("Send failed: weak key");
+        verify(campaignCompletionService).checkAndComplete(recipient.getCampaignId());
     }
 
     @Test

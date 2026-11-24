@@ -6,6 +6,8 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -15,6 +17,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @ExtendWith(MockitoExtension.class)
@@ -69,4 +73,20 @@ class SuppressionsTokenServiceTest {
                 .isBefore(Date.from(Instant.now().plus(31, ChronoUnit.DAYS)));
     }
 
+
+    @ParameterizedTest
+    @ValueSource(strings = {"${UNSUBSCRIBE_SECRET}", "too-short"})
+    void refusesToStartWithAnUnsetOrShortSecret(String secret) {
+        var service = new UnsubscribeTokenService(new AppProperties(secret, new AppProperties.Frontend(TEST_FRONTEND_URL)));
+
+        assertThatThrownBy(service::requireUsableSecret)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("UNSUBSCRIBE_SECRET");
+    }
+
+    @Test
+    void startsWithA32ByteSecret() {
+        assertThatCode(unsubscribeTokenService::requireUsableSecret)
+                .doesNotThrowAnyException();
+    }
 }

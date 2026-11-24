@@ -33,7 +33,6 @@ import java.util.Map;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,9 +42,6 @@ import java.util.stream.Collectors;
 public class EmailSendService {
 
     private static final Pattern TEMPLATE_VAR_PATTERN = Pattern.compile("\\{\\{([a-zA-Z_]\\w*)\\}\\}");
-    // Resend allows 10 batch requests/second; cap concurrent calls to that limit
-    private static final Semaphore RESEND_SEMAPHORE = new Semaphore(10);
-
     private final CampaignRepository campaignRepository;
     private final EmailProviderRepository emailProviderRepository;
     private final ResendClient resendClient;
@@ -98,13 +94,7 @@ public class EmailSendService {
         if (toSend.isEmpty()) return outcomes;
 
         List<ResendSendRequest> requests = buildRequests(toSend, campaign, emailProvider, campaignAttrs);
-        RESEND_SEMAPHORE.acquireUninterruptibly();
-        CreateBatchEmailsResponse response;
-        try {
-            response = resendClient.sendEmailBatch(apiKey, requests);
-        } finally {
-            RESEND_SEMAPHORE.release();
-        }
+        CreateBatchEmailsResponse response = resendClient.sendEmailBatch(apiKey, requests);
         fillSendOutcomes(outcomes, toSend, response);
         return outcomes;
     }

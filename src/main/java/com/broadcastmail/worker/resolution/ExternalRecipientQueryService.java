@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
 public class ExternalRecipientQueryService {
 
     private static final int LOGIN_TIMEOUT_SECONDS = 5;
+    // A hung query on the user's database would otherwise block resolution for every campaign.
+    private static final int QUERY_TIMEOUT_SECONDS = 30;
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("[a-zA-Z_]\\w*");
 
     public List<RecipientRow> resolve(Connection connection, String rolePassword,
@@ -39,6 +41,7 @@ public class ExternalRecipientQueryService {
         // TODO: CWE-316 — accept char[] and zero out after DriverManager.getConnection()
         try (java.sql.Connection conn = openConnection(connection, rolePassword);
              PreparedStatement stmt = conn.prepareStatement(sql)) { //NOSONAR — sql built from trusted FilterQuery and validated Connection fields only
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
 
             for (int i = 0; i < filterQuery.parameters().size(); i++) {
                 stmt.setObject(i + 1, filterQuery.parameters().get(i));
@@ -62,6 +65,7 @@ public class ExternalRecipientQueryService {
             String sql = selectClause(source) + " FROM " + source.from(false) //NOSONAR — validated identifiers
                     + " WHERE " + source.idExpr() + "::text = ANY(?) AND " + source.emailExpr() + " IS NOT NULL";
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
                 stmt.setArray(1, sqlArray);
                 try (ResultSet rs = stmt.executeQuery()) {
                     return mapRows(rs);
@@ -106,6 +110,7 @@ public class ExternalRecipientQueryService {
         try (java.sql.Connection conn = openConnection(connection, rolePassword)) {
             Array sqlArray = conn.createArrayOf("uuid", externalUserIds.toArray(new String[0]));
             try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
                 stmt.setArray(1, sqlArray);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {

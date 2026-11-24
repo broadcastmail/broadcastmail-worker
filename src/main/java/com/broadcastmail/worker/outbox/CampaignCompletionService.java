@@ -31,6 +31,8 @@ public class CampaignCompletionService {
 
         Campaign campaign = campaignRepository.findById(campaignId)
                 .orElseThrow(() -> new CampaignNotFoundException(campaignId));
+        // A campaign that already ended (e.g. FAILED on the plan limit during resolution) keeps its status.
+        if (campaign.getStatus() != CampaignStatus.SENDING) return;
         CampaignStatus finalStatus;
         if (failed == total) {
             finalStatus = CampaignStatus.FAILED;
