@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -35,6 +36,21 @@ class ResolutionJobTest {
         resolutionJob.trigger();
 
         verify(resolutionService, timeout(2000)).resolve(campaign);
+    }
+
+    @Test
+    void failsCampaignsStuckInResolvingAndStillResolvesTheRest() {
+        Campaign stuck = Campaign.builder().id(UUID.randomUUID())
+                .updatedAt(OffsetDateTime.now().minus(ResolutionJob.RESOLVING_TIMEOUT).minusMinutes(1)).build();
+        Campaign fresh = Campaign.builder().id(UUID.randomUUID())
+                .updatedAt(OffsetDateTime.now().minusMinutes(1)).build();
+        when(campaignRepository.findAllByStatus(CampaignStatus.RESOLVING)).thenReturn(List.of(stuck, fresh));
+
+        resolutionJob.trigger();
+
+        verify(resolutionService, timeout(2000)).failTimedOut(stuck, ResolutionJob.RESOLVING_TIMEOUT);
+        verify(resolutionService, timeout(2000)).resolve(fresh);
+        verify(resolutionService, never()).resolve(stuck);
     }
 
     @Test
