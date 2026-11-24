@@ -9,6 +9,7 @@ import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
 import com.broadcastmail.worker.common.exceptions.EmailSendException;
 import com.broadcastmail.worker.common.exceptions.ResendRateLimitException;
+import com.broadcastmail.worker.common.exceptions.ResendThrottledException;
 import com.broadcastmail.worker.resolution.TemplateAttributeService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -39,6 +40,8 @@ public class OutboxProcessor {
 
     private static final int RESEND_BATCH_MAX = 100;
     private static final int MAX_CAMPAIGN_DAYS = 500;
+    private static final int THROTTLE_RETRY_SECONDS = 2;
+    private static final int MAX_REASON_LENGTH = 255;
 
     public void processAll(List<OutboxEntry> entries) {
         List<UUID> recipientIds = entries.stream().map(OutboxEntry::getCampaignRecipientId).toList();
@@ -69,6 +72,35 @@ public class OutboxProcessor {
         if (pairs.isEmpty()) return;
 
         UUID campaignId = pairs.get(0).getValue().getCampaignId();
+        try {
+            sendCampaignBatch(pairs, campaignId);
+        } catch (RuntimeException e) {
+            // Otherwise the rows stay PROCESSING, get reset every few minutes and fail the same way forever.
+            log.error("Sending failed for campaign {}; counting it as a failed attempt", campaignId, e);
+            failUnfinished(pairs, campaignId, e);
+        }
+    }
+
+    private void failUnfinished(List<Map.Entry<OutboxEntry, CampaignRecipient>> pairs, UUID campaignId, RuntimeException e) {
+        String reason = truncate("Send failed: " + e.getMessage());
+        boolean anyFailed = false;
+        for (Map.Entry<OutboxEntry, CampaignRecipient> pair : pairs) {
+            if (pair.getKey().getStatus() == OutboxStatus.PROCESSING
+                    && handleEmailFailure(pair.getKey(), pair.getValue(), reason)) {
+                anyFailed = true;
+            }
+        }
+        if (anyFailed) {
+            campaignRecipientRepository.flush();
+            campaignCompletionService.checkAndComplete(campaignId);
+        }
+    }
+
+    private static String truncate(String s) {
+        return s.length() <= MAX_REASON_LENGTH ? s : s.substring(0, MAX_REASON_LENGTH);
+    }
+
+    private void sendCampaignBatch(List<Map.Entry<OutboxEntry, CampaignRecipient>> pairs, UUID campaignId) {
         boolean anyFailed = false;
         List<Map.Entry<OutboxEntry, CampaignRecipient>> toSend = pairs;
 
@@ -108,6 +140,10 @@ public class OutboxProcessor {
                 List<BatchSendOutcome> outcomes = emailSendService.sendEmailBatch(
                         chunk.stream().map(Map.Entry::getValue).toList(), campaignAttrs);
                 if (processOutcomes(outcomes, chunk, campaignId)) anyFailed = true;
+            } catch (ResendThrottledException _) {
+                // Per-second limit: retry shortly, without using up an attempt or waiting for tomorrow.
+                retrySoon(toSend.subList(chunkStart, toSend.size()));
+                return new ChunkResult(true, anyFailed);
             } catch (ResendRateLimitException _) {
                 emailSendService.evictDailyQuota(campaignId);
                 if (rescheduleAll(toSend.subList(chunkStart, toSend.size()))) anyFailed = true;
@@ -121,6 +157,16 @@ public class OutboxProcessor {
     }
 
     private record ChunkResult(boolean rateLimited, boolean anyFailed) {}
+
+    private void retrySoon(List<Map.Entry<OutboxEntry, CampaignRecipient>> pairs) {
+        OffsetDateTime at = OffsetDateTime.now(ZoneId.systemDefault()).plusSeconds(THROTTLE_RETRY_SECONDS);
+        for (Map.Entry<OutboxEntry, CampaignRecipient> pair : pairs) {
+            OutboxEntry entry = pair.getKey();
+            entry.setStatus(OutboxStatus.PENDING);
+            entry.setNextAttemptAt(at);
+            outboxEntryRepository.save(entry);
+        }
+    }
 
     private boolean rescheduleAll(List<Map.Entry<OutboxEntry, CampaignRecipient>> pairs) {
         boolean anyFailed = false;

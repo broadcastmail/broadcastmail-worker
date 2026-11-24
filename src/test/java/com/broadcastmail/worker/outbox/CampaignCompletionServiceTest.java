@@ -55,6 +55,23 @@ class CampaignCompletionServiceTest {
     }
 
     @Test
+    void shouldKeepTheStatusOfACampaignThatAlreadyFailed() {
+        // Given: resolution failed it on the plan limit
+        Campaign failed = Campaign.builder().id(CAMPAIGN_ID).status(CampaignStatus.FAILED)
+                .failureReason("Recipient limit reached for your plan.").build();
+        when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))
+                .thenReturn(counts(0, 0, 5));
+        when(campaignRepository.findById(CAMPAIGN_ID)).thenReturn(Optional.of(failed));
+
+        // When
+        campaignCompletionService.checkAndComplete(CAMPAIGN_ID);
+
+        // Then
+        verify(campaignRepository, never()).save(any());
+        verifyNoInteractions(statusNotifier);
+    }
+
+    @Test
     void shouldMarkCampaignAsSentWhenAllDelivered() {
         // Given
         when(campaignRecipientRepository.countStatusesByCampaignId(CAMPAIGN_ID))

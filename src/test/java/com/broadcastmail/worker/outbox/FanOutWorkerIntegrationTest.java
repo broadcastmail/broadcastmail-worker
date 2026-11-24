@@ -26,6 +26,8 @@ import com.resend.services.batch.model.CreateBatchEmailsResponse;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.ParameterizedTest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -185,6 +187,22 @@ class FanOutWorkerIntegrationTest extends IntegrationTest {
     void shouldNotProcessOutboxEntriesForFutureScheduledCampaign() {
         // Given
         campaign.setScheduledAt(OffsetDateTime.now(ZoneId.systemDefault()).plusHours(1));
+        campaignRepository.save(campaign);
+
+        // When
+        fanOutWorker.poll();
+
+        // Then
+        OutboxEntry entry = outboxEntryRepository.findById(outboxEntry.getId()).orElseThrow();
+        assertThat(entry.getStatus()).isEqualTo(OutboxStatus.PENDING);
+        verifyNoInteractions(resendClient);
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = CampaignStatus.class, names = {"RESOLVING", "FAILED"})
+    void shouldNotSendOutboxEntriesOfACampaignThatIsNotSending(CampaignStatus status) {
+        // Given: rows queued while resolving, or left behind when resolution failed on the plan limit
+        campaign.setStatus(status);
         campaignRepository.save(campaign);
 
         // When
