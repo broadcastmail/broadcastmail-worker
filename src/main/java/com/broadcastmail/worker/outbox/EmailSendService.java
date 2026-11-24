@@ -1,5 +1,6 @@
 package com.broadcastmail.worker.outbox;
 
+import com.broadcastmail.common.campaign.Preheader;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
@@ -115,7 +116,8 @@ public class EmailSendService {
         for (CampaignRecipient recipient : toSend) {
             String extId = recipient.getExternalUserId();
             Map<String, Object> attrs = extId != null ? campaignAttrs.getOrDefault(extId, Map.of()) : Map.of();
-            String bodyHtml = applyTemplateVariables(campaign.getBodyHtml(), attrs);
+            String bodyHtml = applyTemplateVariables(
+                    Preheader.inject(campaign.getBodyHtml(), campaign.getPreviewText()), attrs);
             String unsubscribeUrl = unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId());
             String bodyWithUnsubscribe = bodyHtml + "<br><br><a href=\"" + unsubscribeUrl + "\">Unsubscribe</a>";
             requests.add(new ResendSendRequest(
