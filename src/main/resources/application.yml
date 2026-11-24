@@ -1,4 +1,7 @@
 spring:
+  main:
+    # No web server, and the outbox listener is a virtual thread: without this the JVM exits after startup.
+    keep-alive: true
   datasource:
     url: jdbc:postgresql://${PGBOUNCER_HOST:${PGHOST}}:${PGBOUNCER_PORT:${PGPORT}}/${PGDATABASE}
     username: ${PGUSER}
