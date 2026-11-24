@@ -1,5 +1,6 @@
 package com.broadcastmail.worker.jobs;
 
+import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.worker.resolution.ResolutionService;
@@ -8,12 +9,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class ResolutionJob {
+
+    static final Duration RESOLVING_TIMEOUT = Duration.ofMinutes(30);
 
     private final CampaignRepository campaignRepository;
     private final ResolutionService resolutionService;
@@ -45,8 +52,13 @@ public class ResolutionJob {
 
     void resolvePending() {
         try {
-            campaignRepository.findAllByStatus(CampaignStatus.RESOLVING)
-                    .stream()
+            List<Campaign> resolving = campaignRepository.findAllByStatus(CampaignStatus.RESOLVING);
+            OffsetDateTime cutoff = OffsetDateTime.now(ZoneId.systemDefault()).minus(RESOLVING_TIMEOUT);
+            resolving.stream()
+                    .filter(c -> c.getUpdatedAt() != null && c.getUpdatedAt().isBefore(cutoff))
+                    .forEach(c -> resolutionService.failTimedOut(c, RESOLVING_TIMEOUT));
+            resolving.stream()
+                    .filter(c -> c.getUpdatedAt() == null || !c.getUpdatedAt().isBefore(cutoff))
                     .limit(3)
                     .forEach(resolutionService::resolve);
         } catch (Exception e) {

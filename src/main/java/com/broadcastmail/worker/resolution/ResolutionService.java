@@ -24,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.HashSet;
@@ -146,6 +147,13 @@ public class ResolutionService {
                                           FilterQuery filterQuery, int offset) {
         return externalRecipientQueryService.resolve(
                 connection, rolePassword, filterQuery, offset, BATCH_SIZE);
+    }
+
+    /** For a campaign that has sat in RESOLVING too long, e.g. the worker kept dying mid-run. */
+    public void failTimedOut(Campaign campaign, Duration limit) {
+        failCampaign(campaign, "Resolution timed out after " + limit.toMinutes() + " minutes.");
+        statusNotifier.notify(campaign.getId(), campaign.getAccountId());
+        log.warn("Resolution timed out for campaign {}", campaign.getId());
     }
 
     private void failCampaign(Campaign campaign, String reason) {
