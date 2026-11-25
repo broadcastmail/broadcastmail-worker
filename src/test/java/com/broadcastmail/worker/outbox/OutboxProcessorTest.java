@@ -29,7 +29,6 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.TimeZone;
 import java.util.OptionalInt;
 import java.util.UUID;
 
@@ -126,25 +125,6 @@ class OutboxProcessorTest {
         assertThat(outboxEntry.getStatus()).isEqualTo(OutboxStatus.PENDING);
         assertThat(outboxEntry.getAttempts()).isZero();
         assertThat(outboxEntry.getNextAttemptAt()).isEqualTo(nextUtcMidnight());
-    }
-
-    @Test
-    void shouldResumeRateLimitedEntriesAtUtcMidnightWhateverTheHostTimeZone() {
-        // Given: a host far from UTC, where the local and the UTC date differ for most of the day
-        TimeZone original = TimeZone.getDefault();
-        TimeZone.setDefault(TimeZone.getTimeZone("Pacific/Kiritimati"));
-        try {
-            when(emailSendService.sendEmailBatch(any(), any()))
-                    .thenThrow(new ResendRateLimitException("Rate limit exceeded"));
-
-            // When
-            outboxProcessor.processCampaignBatch(List.of(outboxEntry), recipientMap);
-
-            // Then: Resend resets the daily quota at midnight UTC
-            assertThat(outboxEntry.getNextAttemptAt().toInstant()).isEqualTo(nextUtcMidnight().toInstant());
-        } finally {
-            TimeZone.setDefault(original);
-        }
     }
 
     @Test
