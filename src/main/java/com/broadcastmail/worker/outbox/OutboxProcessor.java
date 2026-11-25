@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -228,10 +229,11 @@ public class OutboxProcessor {
             return true;
         }
         entry.setStatus(OutboxStatus.PENDING);
+        // Resend's daily quota resets at midnight UTC, whatever the host's time zone is.
         entry.setNextAttemptAt(
-                LocalDate.now(ZoneId.systemDefault())
+                LocalDate.now(ZoneOffset.UTC)
                         .plusDays(1)
-                        .atStartOfDay(ZoneId.systemDefault())
+                        .atStartOfDay(ZoneOffset.UTC)
                         .toOffsetDateTime()
         );
         outboxEntryRepository.save(entry);
