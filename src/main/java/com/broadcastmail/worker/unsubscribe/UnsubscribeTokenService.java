@@ -1,45 +1,44 @@
 package com.broadcastmail.worker.unsubscribe;
 
+import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
+import com.broadcastmail.common.unsubscribe.UnsubscribeClaims;
+import com.broadcastmail.common.unsubscribe.UnsubscribeTokenCodec;
 import com.broadcastmail.worker.config.AppProperties;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Date;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 public class UnsubscribeTokenService {
-    private final AppProperties appProperties;
 
-    private static final int MIN_SECRET_BYTES = 32;
+    /**
+     * @param pageUrl     the link in the email body: the frontend confirm page, so scanners that open it don't unsubscribe anyone
+     * @param oneClickUrl the List-Unsubscribe header target: the API, which mailbox providers POST to (RFC 8058)
+     */
+    public record UnsubscribeLinks(String pageUrl, String oneClickUrl) {}
 
-    /** Fails startup instead of every send: HMAC-SHA256 needs a 32-byte key, and an unset env var stays as "${...}". */
-    @PostConstruct
-    void requireUsableSecret() {
-        String secret = appProperties.unsubscribeSecret();
-        if (secret == null || secret.contains("${") || secret.getBytes(StandardCharsets.UTF_8).length < MIN_SECRET_BYTES) {
-            throw new IllegalStateException("UNSUBSCRIBE_SECRET must be set to at least " + MIN_SECRET_BYTES + " bytes");
+    private final UnsubscribeTokenCodec codec;
+    private final String frontendUrl;
+    private final String apiUrl;
+
+    /** Fails startup instead of every send when UNSUBSCRIBE_SECRET or API_PUBLIC_URL is unset. */
+    public UnsubscribeTokenService(AppProperties appProperties) {
+        this.codec = new UnsubscribeTokenCodec(appProperties.unsubscribeSecret());
+        this.frontendUrl = requireUrl("FRONTEND_URL", appProperties.frontend() == null ? null : appProperties.frontend().url());
+        this.apiUrl = requireUrl("API_PUBLIC_URL", appProperties.api() == null ? null : appProperties.api().publicUrl());
+    }
+
+    public UnsubscribeLinks linksFor(UUID accountId, CampaignRecipient recipient) {
+        String token = codec.issue(new UnsubscribeClaims(recipient.getId(), accountId, recipient.getEmail()));
+        return new UnsubscribeLinks(
+                frontendUrl + "/unsubscribe?token=" + token,
+                apiUrl + "/unsubscribe?token=" + token);
+    }
+
+    private static String requireUrl(String name, String url) {
+        if (url == null || url.isBlank() || url.contains("${")) {
+            throw new IllegalStateException(name + " must be set");
         }
-    }
-
-    public String generateUnsubscribeUrl(UUID campaignRecipientId) {
-            String token = Jwts.builder()
-                    .subject(campaignRecipientId.toString())
-                    .expiration(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
-                    .signWith(getKey())
-                    .compact();
-        return appProperties.frontend().url() + "/unsubscribe?token=" + token;
-    }
-
-    private SecretKey getKey() {
-        return Keys.hmacShaKeyFor(appProperties.unsubscribeSecret().getBytes());
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 }

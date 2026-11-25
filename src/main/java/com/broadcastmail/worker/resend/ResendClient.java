@@ -40,7 +40,7 @@ public class ResendClient {
                         .to(r.to())
                         .subject(r.subject())
                         .html(r.html())
-                        .addHeader("List-Unsubscribe", "<" + r.unsubscribeUrl() + ">")
+                        .addHeader("List-Unsubscribe", "<" + r.oneClickUnsubscribeUrl() + ">")
                         .addHeader("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
                         .addHeader("Idempotency-Key", r.idempotencyKey())
                         .build())

@@ -16,6 +16,7 @@ import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.ResendUsageService;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
 import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
+import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService.UnsubscribeLinks;
 import com.resend.services.batch.model.BatchEmail;
 import com.resend.services.batch.model.CreateBatchEmailsResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,6 +52,7 @@ class EmailSendServiceTest {
 
     private static final String TEST_KEY = "12345678901234567890123456789012";
     private static final String TEST_UNSUBSCRIBE_URL = "https://app.example.com/unsubscribe?token=test-token";
+    private static final String TEST_ONE_CLICK_URL = "https://api.example.com/unsubscribe?token=test-token";
     private final EncryptionProperties encryptionProperties = new EncryptionProperties(TEST_KEY);
 
     @BeforeEach
@@ -96,7 +98,8 @@ class EmailSendServiceTest {
     private void stubHappyPath() {
         stubCampaignAndProvider();
         when(suppressionsRepository.findByAccountIdAndEmailIn(any(), any())).thenReturn(List.of());
-        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId())).thenReturn(TEST_UNSUBSCRIBE_URL);
+        when(unsubscribeTokenService.linksFor(campaign.getAccountId(), recipient))
+                .thenReturn(new UnsubscribeLinks(TEST_UNSUBSCRIBE_URL, TEST_ONE_CLICK_URL));
         when(resendClient.sendEmailBatch(anyString(), any()))
                 .thenReturn(new CreateBatchEmailsResponse(List.of(new BatchEmail("msg-123")), List.of()));
     }
@@ -148,9 +151,23 @@ class EmailSendServiceTest {
         emailSendService.sendEmailBatch(List.of(recipient), Map.of());
 
         // Then
-        verify(unsubscribeTokenService).generateUnsubscribeUrl(recipient.getId());
+        verify(unsubscribeTokenService).linksFor(campaign.getAccountId(), recipient);
         verify(resendClient).sendEmailBatch(anyString(), argThat((List<ResendSendRequest> reqs) ->
                 reqs.get(0).html().contains("<a href=\"" + TEST_UNSUBSCRIBE_URL + "\">Unsubscribe</a>")));
+    }
+
+    @Test
+    void shouldPointTheListUnsubscribeHeaderAtTheApiNotTheFrontendPage() {
+        // Given
+        stubHappyPath();
+
+        // When
+        emailSendService.sendEmailBatch(List.of(recipient), Map.of());
+
+        // Then
+        verify(resendClient).sendEmailBatch(anyString(), argThat((List<ResendSendRequest> reqs) ->
+                TEST_ONE_CLICK_URL.equals(reqs.get(0).oneClickUnsubscribeUrl())
+                        && !reqs.get(0).html().contains(TEST_ONE_CLICK_URL)));
     }
 
     @Test
@@ -191,7 +208,8 @@ class EmailSendServiceTest {
         stubCampaignAndProvider();
         when(suppressionsRepository.findByAccountIdAndEmailIn(any(), any()))
                 .thenReturn(List.of(suppressionFor("suppressed@example.com")));
-        when(unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId())).thenReturn(TEST_UNSUBSCRIBE_URL);
+        when(unsubscribeTokenService.linksFor(campaign.getAccountId(), recipient))
+                .thenReturn(new UnsubscribeLinks(TEST_UNSUBSCRIBE_URL, TEST_ONE_CLICK_URL));
         when(resendClient.sendEmailBatch(anyString(), any()))
                 .thenReturn(new CreateBatchEmailsResponse(List.of(new BatchEmail("msg-123")), List.of()));
 
