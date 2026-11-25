@@ -22,6 +22,9 @@ ENCRYPTION_KEY=
 
 # Unsubscribe — same secret as API
 UNSUBSCRIBE_SECRET=
+# Link in the email body (frontend confirm page) and List-Unsubscribe header (API, POSTed by Gmail/Yahoo)
+FRONTEND_URL=http://localhost:3000
+API_PUBLIC_URL=http://localhost:8080
 
 # GitHub Packages (for broadcastmail-common)
 GITHUB_TOKEN=

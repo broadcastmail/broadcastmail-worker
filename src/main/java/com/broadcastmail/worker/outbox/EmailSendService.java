@@ -16,6 +16,7 @@ import com.broadcastmail.worker.resend.ResendClient;
 import com.broadcastmail.worker.resend.ResendUsageService;
 import com.broadcastmail.worker.resend.dto.ResendSendRequest;
 import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService;
+import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService.UnsubscribeLinks;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.resend.services.batch.model.BatchEmail;
@@ -108,14 +109,14 @@ public class EmailSendService {
             Map<String, Object> attrs = extId != null ? campaignAttrs.getOrDefault(extId, Map.of()) : Map.of();
             String bodyHtml = applyTemplateVariables(
                     Preheader.inject(campaign.getBodyHtml(), campaign.getPreviewText()), attrs);
-            String unsubscribeUrl = unsubscribeTokenService.generateUnsubscribeUrl(recipient.getId());
-            String bodyWithUnsubscribe = bodyHtml + "<br><br><a href=\"" + unsubscribeUrl + "\">Unsubscribe</a>";
+            UnsubscribeLinks links = unsubscribeTokenService.linksFor(campaign.getAccountId(), recipient);
+            String bodyWithUnsubscribe = bodyHtml + "<br><br><a href=\"" + links.pageUrl() + "\">Unsubscribe</a>";
             requests.add(new ResendSendRequest(
                     emailProvider.getFromAddress(),
                     List.of(recipient.getEmail()),
                     campaign.getSubject(),
                     bodyWithUnsubscribe,
-                    unsubscribeUrl,
+                    links.oneClickUrl(),
                     recipient.getIdempotencyKey()
             ));
         }
