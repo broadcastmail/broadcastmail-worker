@@ -1,6 +1,7 @@
 package com.broadcastmail.worker.resolution;
 
 import com.broadcastmail.common.account.Account;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import com.broadcastmail.common.account.AccountRepository;
 import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.AudienceMode;
@@ -48,6 +49,7 @@ class ResolutionServiceTest {
     @Mock private CampaignRepository campaignRepository;
     @Mock private EncryptionProperties encryptionProperties;
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
+    @Mock private RecipientUsageRepository recipientUsageRepository;
     @Mock private AccountRepository accountRepository;
     @Mock private CampaignStatusNotifier statusNotifier;
     @InjectMocks private ResolutionService resolutionService;
@@ -135,7 +137,7 @@ class ResolutionServiceTest {
         when(filterSerializer.serialize(any(), anyString(), any())).thenReturn(new FilterQuery("", List.of()));
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt()))
                 .thenReturn(CampaignTestFixtures.recipientRows(2));
-        when(campaignRecipientRepository.findDistinctEmailsSince(eq(ACCOUNT_ID), any()))
+        when(recipientUsageRepository.findEmailsSince(eq(ACCOUNT_ID), any()))
                 .thenReturn(IntStream.rangeClosed(1, 499).mapToObj(i -> "earlier" + i + "@example.com").toList());
         // When
         resolutionService.resolve(campaign);
@@ -263,7 +265,7 @@ class ResolutionServiceTest {
         when(encryptionProperties.key()).thenReturn(CampaignTestFixtures.TEST_ENCRYPTION_KEY);
         when(filterRepository.findByCampaignId(CAMPAIGN_ID)).thenReturn(List.of());
         when(filterSerializer.serialize(any(), anyString(), any())).thenReturn(new FilterQuery("", List.of()));
-        when(campaignRecipientRepository.findDistinctEmailsSince(eq(ACCOUNT_ID), any())).thenReturn(earlier);
+        when(recipientUsageRepository.findEmailsSince(eq(ACCOUNT_ID), any())).thenReturn(earlier);
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(0), anyInt())).thenReturn(rows);
         when(externalRecipientQueryService.resolve(any(), any(), any(), eq(100), anyInt())).thenReturn(List.of());
 

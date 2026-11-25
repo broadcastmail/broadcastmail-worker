@@ -2,6 +2,7 @@ package com.broadcastmail.worker.jobs;
 
 import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.CampaignRepository;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,7 +16,11 @@ import java.time.ZoneId;
 @Component
 @RequiredArgsConstructor
 public class RetentionCleanupJob {
+    // How long an emailed address counts toward the plan's recipient limit; independent of campaign retention.
+    private static final int USAGE_PERIOD_DAYS = 30;
+
     private final CampaignRepository campaignRepository;
+    private final RecipientUsageRepository recipientUsageRepository;
 
     @Transactional
     @Scheduled(cron = "0 0 2 * * *")
@@ -26,6 +31,7 @@ public class RetentionCleanupJob {
                     .minusDays(plan.strategy().retentionDays());
             campaignRepository.deleteByPlanAndSentAtBefore(plan.name(), cutoff);
         }
+        recipientUsageRepository.deleteOlderThan(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(USAGE_PERIOD_DAYS));
         log.info("RetentionCleanupJob — deleted campaigns older than retention window");
     }
 }

@@ -8,7 +8,12 @@ import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignRepository;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.connection.Connection;
+import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
+import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
+import com.broadcastmail.common.campaign.recipient.RecipientStatus;
 import com.broadcastmail.common.connection.ConnectionRepository;
+import com.broadcastmail.common.usage.RecipientUsage;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import com.broadcastmail.worker.IntegrationTest;
 import com.broadcastmail.worker.TestContainersConfiguration;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
@@ -32,6 +37,8 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
     @Autowired private CampaignRepository campaignRepository;
     @Autowired private AccountRepository accountRepository;
     @Autowired private ConnectionRepository connectionRepository;
+    @Autowired private CampaignRecipientRepository campaignRecipientRepository;
+    @Autowired private RecipientUsageRepository recipientUsageRepository;
 
     private Account account;
     private Connection connection;
@@ -44,9 +51,51 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
 
     @AfterEach
     void tearDown() {
+        recipientUsageRepository.deleteAll();
         campaignRepository.deleteAll();
         connectionRepository.deleteAll();
         accountRepository.deleteAll();
+    }
+
+    @Test
+    void shouldKeepCountingRecipientsTowardTheLimitAfterTheirCampaignIsDeleted() {
+        // Given: a Free campaign sent 8 days ago whose recipients were recorded when it was resolved
+        Campaign old = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(CampaignStatus.SENT)
+                .sentAt(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(8))
+                .build());
+        campaignRecipientRepository.save(CampaignRecipient.builder()
+                .campaignId(old.getId())
+                .externalUserId("user-1")
+                .email("user1@example.com")
+                .status(RecipientStatus.SENT)
+                .idempotencyKey(old.getId() + ":user-1")
+                .build());
+        recipientUsageRepository.recordForCampaign(old.getId(), new String[]{"user-1"});
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then: the campaign and its recipients are gone, the usage is not
+        assertThat(campaignRepository.findById(old.getId())).isEmpty();
+        assertThat(campaignRecipientRepository.findByCampaignId(old.getId(), org.springframework.data.domain.Pageable.unpaged())).isEmpty();
+        OffsetDateTime monthAgo = OffsetDateTime.now(ZoneId.systemDefault()).minusDays(30);
+        assertThat(recipientUsageRepository.countSince(account.getId(), monthAgo)).isEqualTo(1);
+        assertThat(recipientUsageRepository.findEmailsSince(account.getId(), monthAgo)).containsExactly("user1@example.com");
+    }
+
+    @Test
+    void shouldDeleteUsageOlderThan30DaysAndKeepNewer() {
+        // Given
+        usedDaysAgo("old@example.com", 31);
+        usedDaysAgo("recent@example.com", 29);
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then
+        assertThat(recipientUsageRepository.findEmailsSince(account.getId(), OffsetDateTime.now(ZoneId.systemDefault()).minusDays(60)))
+                .containsExactly("recent@example.com");
     }
 
     @Test
@@ -104,5 +153,9 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
 
         // Then
         assertThat(campaignRepository.findById(draft.getId())).isPresent();
+    }
+
+    private void usedDaysAgo(String email, int daysAgo) {
+        recipientUsageRepository.save(new RecipientUsage(account.getId(), email, OffsetDateTime.now(ZoneId.systemDefault()).minusDays(daysAgo)));
     }
 }
