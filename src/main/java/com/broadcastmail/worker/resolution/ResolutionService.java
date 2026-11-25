@@ -11,6 +11,7 @@ import com.broadcastmail.common.campaign.filter.CampaignFilterRepository;
 import com.broadcastmail.common.campaign.filter.CampaignFilterSerializer;
 import com.broadcastmail.common.campaign.filter.FilterQuery;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import com.broadcastmail.common.connection.Connection;
 import com.broadcastmail.common.connection.RecipientSource;
 import com.broadcastmail.common.connection.ConnectionRepository;
@@ -47,6 +48,7 @@ public class ResolutionService {
     private final EncryptionProperties encryptionProperties;
     private final AccountRepository accountRepository;
     private final CampaignRecipientRepository campaignRecipientRepository;
+    private final RecipientUsageRepository recipientUsageRepository;
     private final CampaignStatusNotifier statusNotifier;
 
     public void resolve(Campaign campaign) {
@@ -59,7 +61,7 @@ public class ResolutionService {
 
             String rolePassword = SecurityUtil.decrypt(connection.getEncryptedCreds(), encryptionProperties.key());
             // Addresses emailed this period already used up quota; only new ones count against the plan limit.
-            Set<String> usedThisPeriod = new HashSet<>(campaignRecipientRepository.findDistinctEmailsSince(
+            Set<String> usedThisPeriod = new HashSet<>(recipientUsageRepository.findEmailsSince(
                     account.getId(), OffsetDateTime.now(ZoneId.systemDefault()).minusDays(30)));
 
             Exclusions exclusions = exclusions(campaign);

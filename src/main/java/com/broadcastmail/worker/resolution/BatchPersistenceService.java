@@ -4,6 +4,7 @@ import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.outbox.OutboxEntry;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
 import com.broadcastmail.common.outbox.OutboxStatus;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,6 +23,7 @@ public class BatchPersistenceService {
 
     private final CampaignRecipientRepository campaignRecipientRepository;
     private final OutboxEntryRepository outboxEntryRepository;
+    private final RecipientUsageRepository recipientUsageRepository;
     private final JdbcTemplate jdbcTemplate;
 
     @Transactional
@@ -34,6 +36,8 @@ public class BatchPersistenceService {
 
         OffsetDateTime insertedAfter = OffsetDateTime.now(ZoneId.systemDefault());
         campaignRecipientRepository.upsertRecipients(campaignId, userIds, emails);
+        // Same transaction as the recipients: the plan limit counts these, and they outlive the campaign.
+        recipientUsageRepository.recordForCampaign(campaignId, userIds);
         List<UUID> insertedIds = campaignRecipientRepository
                 .findInsertedAfter(campaignId, Arrays.asList(userIds), insertedAfter);
 

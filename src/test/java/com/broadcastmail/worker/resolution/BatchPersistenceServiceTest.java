@@ -3,6 +3,7 @@ package com.broadcastmail.worker.resolution;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipientRepository;
 import com.broadcastmail.common.outbox.OutboxEntry;
 import com.broadcastmail.common.outbox.OutboxEntryRepository;
+import com.broadcastmail.common.usage.RecipientUsageRepository;
 import org.springframework.jdbc.core.JdbcTemplate;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 import com.broadcastmail.worker.support.CampaignTestFixtures;
@@ -26,6 +27,7 @@ class BatchPersistenceServiceTest {
 
     @Mock private CampaignRecipientRepository campaignRecipientRepository;
     @Mock private OutboxEntryRepository outboxEntryRepository;
+    @Mock private RecipientUsageRepository recipientUsageRepository;
     @Mock private JdbcTemplate jdbcTemplate;
 
     @InjectMocks private BatchPersistenceService batchPersistenceService;
@@ -42,6 +44,20 @@ class BatchPersistenceServiceTest {
 
         // Then
         verify(outboxEntryRepository, never()).saveAll(any());
+    }
+
+    @Test
+    void shouldRecordUsageForTheBatchEvenWhenEveryRecipientAlreadyExisted() {
+        // Given — a resumed run: the rows exist, but recording is idempotent so it is always safe to repeat
+        List<RecipientRow> batch = CampaignTestFixtures.recipientRows(2);
+        when(campaignRecipientRepository.findInsertedAfter(eq(CAMPAIGN_ID), anyList(), any()))
+                .thenReturn(List.of());
+
+        // When
+        batchPersistenceService.persistBatch(CAMPAIGN_ID, batch);
+
+        // Then
+        verify(recipientUsageRepository).recordForCampaign(eq(CAMPAIGN_ID), eq(new String[]{"user-id-1", "user-id-2"}));
     }
 
     @Test
