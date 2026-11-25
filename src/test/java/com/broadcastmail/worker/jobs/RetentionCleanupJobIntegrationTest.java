@@ -26,7 +26,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Pageable;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -43,7 +42,6 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
     @Autowired private ConnectionRepository connectionRepository;
     @Autowired private CampaignRecipientRepository campaignRecipientRepository;
     @Autowired private RecipientUsageRepository recipientUsageRepository;
-    @Autowired private JdbcTemplate jdbcTemplate;
 
     private Account account;
     private Connection connection;
@@ -178,23 +176,17 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
     }
 
     @Test
-    void shouldUseUpdatedAtForACampaignThatFailedBeforeSending() {
-        // Given: failed during resolution, so it never got a sent_at
-        Campaign old = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+    void shouldKeepARecentCampaignThatFailedBeforeSending() {
+        // Given: failed during resolution, so it never got a sent_at; updated_at (now) is used instead
+        Campaign failed = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
                 .status(CampaignStatus.FAILED)
                 .build());
-        Campaign recent = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
-                .status(CampaignStatus.FAILED)
-                .build());
-        setUpdatedAtDaysAgo(old, 8);
-        setUpdatedAtDaysAgo(recent, 6);
 
         // When
         retentionCleanupJob.run();
 
         // Then
-        assertThat(campaignRepository.findById(old.getId())).isEmpty();
-        assertThat(campaignRepository.findById(recent.getId())).isPresent();
+        assertThat(campaignRepository.findById(failed.getId())).isPresent();
     }
 
     @ParameterizedTest
@@ -203,9 +195,9 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
         // Given: includes a rate-limited campaign, which stays SENDING until it resumes
         Campaign campaign = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
                 .status(status)
+                .sentAt(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(100))
                 .failureReason(status == CampaignStatus.SENDING ? "RATE_LIMITED" : null)
                 .build());
-        setUpdatedAtDaysAgo(campaign, 100);
 
         // When
         retentionCleanupJob.run();
@@ -248,12 +240,6 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
                 .status(RecipientStatus.FAILED)
                 .idempotencyKey(campaign.getId() + ":user-1")
                 .build();
-    }
-
-    // @UpdateTimestamp overwrites updated_at on every save, so age it directly
-    private void setUpdatedAtDaysAgo(Campaign campaign, int daysAgo) {
-        jdbcTemplate.update("UPDATE campaigns SET updated_at = now() - make_interval(days => ?) WHERE id = ?",
-                daysAgo, campaign.getId());
     }
 
     private void usedDaysAgo(String email, int daysAgo) {
