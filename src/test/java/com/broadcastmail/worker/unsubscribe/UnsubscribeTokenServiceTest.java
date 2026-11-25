@@ -3,7 +3,6 @@ package com.broadcastmail.worker.unsubscribe;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.unsubscribe.UnsubscribeClaims;
 import com.broadcastmail.common.unsubscribe.UnsubscribeTokenCodec;
-import com.broadcastmail.worker.config.AppProperties;
 import com.broadcastmail.worker.unsubscribe.UnsubscribeTokenService.UnsubscribeLinks;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -27,8 +26,7 @@ class UnsubscribeTokenServiceTest {
             .build();
 
     private static UnsubscribeTokenService serviceWith(String secret, String frontendUrl, String apiUrl) {
-        return new UnsubscribeTokenService(new AppProperties(
-                secret, new AppProperties.Frontend(frontendUrl), new AppProperties.Api(apiUrl)));
+        return new UnsubscribeTokenService(secret, frontendUrl, apiUrl);
     }
 
     @Test

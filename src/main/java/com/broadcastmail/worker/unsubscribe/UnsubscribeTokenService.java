@@ -3,7 +3,7 @@ package com.broadcastmail.worker.unsubscribe;
 import com.broadcastmail.common.campaign.recipient.CampaignRecipient;
 import com.broadcastmail.common.unsubscribe.UnsubscribeClaims;
 import com.broadcastmail.common.unsubscribe.UnsubscribeTokenCodec;
-import com.broadcastmail.worker.config.AppProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -22,10 +22,13 @@ public class UnsubscribeTokenService {
     private final String apiUrl;
 
     /** Fails startup instead of every send when UNSUBSCRIBE_SECRET or API_PUBLIC_URL is unset. */
-    public UnsubscribeTokenService(AppProperties appProperties) {
-        this.codec = new UnsubscribeTokenCodec(appProperties.unsubscribeSecret());
-        this.frontendUrl = requireUrl("FRONTEND_URL", appProperties.frontend() == null ? null : appProperties.frontend().url());
-        this.apiUrl = requireUrl("API_PUBLIC_URL", appProperties.api() == null ? null : appProperties.api().publicUrl());
+    public UnsubscribeTokenService(
+            @Value("${app.unsubscribe-secret}") String secret,
+            @Value("${app.frontend.url}") String frontendUrl,
+            @Value("${app.api.public-url}") String apiUrl) {
+        this.codec = new UnsubscribeTokenCodec(secret);
+        this.frontendUrl = requireUrl("FRONTEND_URL", frontendUrl);
+        this.apiUrl = requireUrl("API_PUBLIC_URL", apiUrl);
     }
 
     public UnsubscribeLinks linksFor(UUID accountId, CampaignRecipient recipient) {

@@ -37,7 +37,7 @@ app:
   api:
     # Public URL of the API; the List-Unsubscribe header points here. No default: a wrong host breaks one-click unsubscribe silently.
     public-url: ${API_PUBLIC_URL}
-  unsubscribeSecret: ${UNSUBSCRIBE_SECRET}
+  unsubscribe-secret: ${UNSUBSCRIBE_SECRET}
   outbox:
     # How many entries to claim per poll cycle. Set higher for paid Resend plans.
     # The worker chunks into batches of 100 (Resend batch API max) automatically.
