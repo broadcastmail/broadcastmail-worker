@@ -20,9 +20,13 @@ import com.broadcastmail.worker.support.CampaignTestFixtures;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -39,6 +43,7 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
     @Autowired private ConnectionRepository connectionRepository;
     @Autowired private CampaignRecipientRepository campaignRecipientRepository;
     @Autowired private RecipientUsageRepository recipientUsageRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     private Account account;
     private Connection connection;
@@ -153,6 +158,102 @@ class RetentionCleanupJobIntegrationTest extends IntegrationTest {
 
         // Then
         assertThat(campaignRepository.findById(draft.getId())).isPresent();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = CampaignStatus.class, names = {"FAILED", "PARTIALLY_FAILED"})
+    void shouldDeleteFailedCampaignsOlderThanRetentionLikeSentOnes(CampaignStatus status) {
+        // Given
+        Campaign old = finishedDaysAgo(status, 8);
+        Campaign recent = finishedDaysAgo(status, 6);
+        campaignRecipientRepository.save(recipientOf(old));
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then: the campaign and the emails it held are gone
+        assertThat(campaignRepository.findById(old.getId())).isEmpty();
+        assertThat(campaignRecipientRepository.findByCampaignId(old.getId(), Pageable.unpaged())).isEmpty();
+        assertThat(campaignRepository.findById(recent.getId())).isPresent();
+    }
+
+    @Test
+    void shouldUseUpdatedAtForACampaignThatFailedBeforeSending() {
+        // Given: failed during resolution, so it never got a sent_at
+        Campaign old = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(CampaignStatus.FAILED)
+                .build());
+        Campaign recent = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(CampaignStatus.FAILED)
+                .build());
+        setUpdatedAtDaysAgo(old, 8);
+        setUpdatedAtDaysAgo(recent, 6);
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then
+        assertThat(campaignRepository.findById(old.getId())).isEmpty();
+        assertThat(campaignRepository.findById(recent.getId())).isPresent();
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = CampaignStatus.class, names = {"DRAFT", "RESOLVING", "SENDING"})
+    void shouldKeepDraftAndInFlightCampaignsHoweverOld(CampaignStatus status) {
+        // Given: includes a rate-limited campaign, which stays SENDING until it resumes
+        Campaign campaign = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(status)
+                .failureReason(status == CampaignStatus.SENDING ? "RATE_LIMITED" : null)
+                .build());
+        setUpdatedAtDaysAgo(campaign, 100);
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then
+        assertThat(campaignRepository.findById(campaign.getId())).isPresent();
+    }
+
+    @Test
+    void shouldDeleteTheOriginalOfARetriedCampaignAndKeepTheRetry() {
+        // Given
+        Campaign original = finishedDaysAgo(CampaignStatus.PARTIALLY_FAILED, 8);
+        Campaign retry = campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(CampaignStatus.SENT)
+                .sentAt(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(1))
+                .retryOfCampaignId(original.getId())
+                .build());
+
+        // When
+        retentionCleanupJob.run();
+
+        // Then: only the lineage link is lost (retry_of_campaign_id is ON DELETE SET NULL)
+        assertThat(campaignRepository.findById(original.getId())).isEmpty();
+        assertThat(campaignRepository.findById(retry.getId()))
+                .hasValueSatisfying(c -> assertThat(c.getRetryOfCampaignId()).isNull());
+    }
+
+    private Campaign finishedDaysAgo(CampaignStatus status, int daysAgo) {
+        return campaignRepository.save(CampaignTestFixtures.draftCampaign(account.getId(), connection.getId())
+                .status(status)
+                .sentAt(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(daysAgo))
+                .build());
+    }
+
+    private CampaignRecipient recipientOf(Campaign campaign) {
+        return CampaignRecipient.builder()
+                .campaignId(campaign.getId())
+                .externalUserId("user-1")
+                .email("user1@example.com")
+                .status(RecipientStatus.FAILED)
+                .idempotencyKey(campaign.getId() + ":user-1")
+                .build();
+    }
+
+    // @UpdateTimestamp overwrites updated_at on every save, so age it directly
+    private void setUpdatedAtDaysAgo(Campaign campaign, int daysAgo) {
+        jdbcTemplate.update("UPDATE campaigns SET updated_at = now() - make_interval(days => ?) WHERE id = ?",
+                daysAgo, campaign.getId());
     }
 
     private void usedDaysAgo(String email, int daysAgo) {

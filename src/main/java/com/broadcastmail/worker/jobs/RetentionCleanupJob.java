@@ -26,12 +26,13 @@ public class RetentionCleanupJob {
     @Scheduled(cron = "0 0 2 * * *")
 
     public void run() {
+        int deleted = 0;
         for (Plan plan : Plan.values()) {
             OffsetDateTime cutoff = OffsetDateTime.now(ZoneId.systemDefault())
                     .minusDays(plan.strategy().retentionDays());
-            campaignRepository.deleteByPlanAndSentAtBefore(plan.name(), cutoff);
+            deleted += campaignRepository.deleteFinishedByPlanBefore(plan.name(), cutoff);
         }
         recipientUsageRepository.deleteOlderThan(OffsetDateTime.now(ZoneId.systemDefault()).minusDays(USAGE_PERIOD_DAYS));
-        log.info("RetentionCleanupJob — deleted campaigns older than retention window");
+        log.info("RetentionCleanupJob — deleted {} finished campaigns older than their plan's retention window", deleted);
     }
 }
