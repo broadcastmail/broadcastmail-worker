@@ -5,7 +5,6 @@ import com.broadcastmail.common.account.plan.Plan;
 import com.broadcastmail.common.campaign.Campaign;
 import com.broadcastmail.common.campaign.CampaignStatus;
 import com.broadcastmail.common.connection.Connection;
-import com.broadcastmail.worker.common.SecurityUtil;
 import com.broadcastmail.worker.resolution.dto.RecipientRow;
 
 import java.util.List;
@@ -13,8 +12,6 @@ import java.util.UUID;
 import java.util.stream.IntStream;
 
 public final class CampaignTestFixtures {
-
-    public static final String TEST_API_KEY = "test-api-key";
     public static final String TEST_ENCRYPTION_KEY = "01234567890123456789012345678901";
 
     private CampaignTestFixtures() {
@@ -24,7 +21,6 @@ public final class CampaignTestFixtures {
         return Account.builder()
                 .email("test@example.com")
                 .passwordHash("")
-                .apiKeyHash(SecurityUtil.sha256(TEST_API_KEY))
                 .plan(Plan.FREE)
                 .emailVerified(true);
     }
