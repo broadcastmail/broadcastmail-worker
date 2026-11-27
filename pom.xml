@@ -28,8 +28,19 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+		<sentry.version>8.66.0</sentry.version>
 	</properties>
 	<dependencies>
+		<dependency>
+			<groupId>io.sentry</groupId>
+			<artifactId>sentry-spring-boot-4</artifactId>
+			<version>${sentry.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>io.sentry</groupId>
+			<artifactId>sentry-logback</artifactId>
+			<version>${sentry.version}</version>
+		</dependency>
         <dependency>
             <groupId>com.broadcastmail</groupId>
             <artifactId>broadcastmail-common</artifactId>

@@ -85,7 +85,7 @@ public class ResolutionService {
         } catch (Exception e) {
             failCampaign(campaign, "Resolution failed: " + e.getMessage());
             statusNotifier.notify(campaign.getId(), campaign.getAccountId());
-            log.warn("Resolution failed for campaign {}: {}", campaign.getId(), e.getMessage());
+            log.error("Resolution failed for campaign {}", campaign.getId(), e);
         }
     }
 

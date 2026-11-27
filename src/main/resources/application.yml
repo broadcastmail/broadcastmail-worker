@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:classpath:sentry-release.properties
   main:
     # No web server, and the outbox listener is a virtual thread: without this the JVM exits after startup.
     keep-alive: true
@@ -42,3 +44,9 @@ app:
     # How many entries to claim per poll cycle. Set higher for paid Resend plans.
     # The worker chunks into batches of 100 (Resend batch API max) automatically.
     poll-limit: ${OUTBOX_POLL_LIMIT:1000}
+
+sentry:
+  dsn: ${SENTRY_DSN:}
+  environment: production
+  tags:
+    service: worker
