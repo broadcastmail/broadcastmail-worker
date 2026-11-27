@@ -62,7 +62,7 @@ public class ResolutionJob {
                     .limit(3)
                     .forEach(resolutionService::resolve);
         } catch (Exception e) {
-            log.warn("Resolution run failed: {}", e.getMessage());
+            log.error("Resolution run failed", e);
         }
     }
 }

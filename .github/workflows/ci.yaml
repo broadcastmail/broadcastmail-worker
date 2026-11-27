@@ -43,6 +43,9 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"items": [{"operation": "update", "key": "isInMaintenanceMode", "value": true}]}'
 
+      - name: Write Sentry release
+        run: echo "sentry.release=${GITHUB_SHA}" > src/main/resources/sentry-release.properties
+
       - name: Deploy to Railway
         run: |
           npm install -g @railway/cli
@@ -71,6 +74,9 @@ jobs:
             -H "Authorization: Bearer ${{ secrets.VERCEL_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{"items": [{"operation": "update", "key": "isInMaintenanceMode", "value": true}]}'
+
+      - name: Write Sentry release
+        run: echo "sentry.release=${GITHUB_SHA}" > src/main/resources/sentry-release.properties
 
       - name: Deploy to Railway
         run: |
